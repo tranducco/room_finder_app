@@ -1,0 +1,40 @@
+{
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log"
+      ]
+    }
+  ],
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "phongtro-ai",
+          "appId": "1:270166149830:android:683f1cad22178fc4d265c7",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "phongtro-ai",
+          "configurations": {
+            "android": "1:270166149830:android:683f1cad22178fc4d265c7",
+            "ios": "1:270166149830:ios:80b44ddca2980d31d265c7",
+            "macos": "1:270166149830:ios:80b44ddca2980d31d265c7",
+            "web": "1:270166149830:web:508bc0d4e96f1d25d265c7",
+            "windows": "1:270166149830:web:57d2d71787664713d265c7"
+          }
+        }
+      }
+    }
+  }
+}

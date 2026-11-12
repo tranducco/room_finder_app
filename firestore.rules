@@ -1,0 +1,233 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getUserData().role == 'admin';
+    }
+
+    // 1. Users collection
+    match /users/{userId} {
+      // Bất kỳ ai đăng nhập đều có thể đọc profile
+      allow read: if isAuthenticated();
+
+      // Khi đăng ký: user chỉ được tạo doc với uid của chính mình và role mặc định là 'user'
+      allow create: if isOwner(userId)
+                    && request.resource.data.uid == request.auth.uid
+                    && (!('role' in request.resource.data) || request.resource.data.role == 'user')
+                    && (!('status' in request.resource.data) || request.resource.data.status == 'active');
+
+      // Khi update:
+      // - Admin có thể cập nhật mọi field (kể cả role, status)
+      // - User chỉ sửa được profile của mình và TUYỆT ĐỐI không được đổi role hoặc status
+      allow update: if isAdmin() || (
+        isOwner(userId)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status']))
+      );
+
+      // Chỉ admin mới có quyền xóa tài khoản khỏi DB
+      allow delete: if isAdmin();
+    }
+
+    // 2. Rooms collection
+    match /rooms/{roomId} {
+      // Cho phép đọc công khai (trang tìm kiếm không yêu cầu đăng nhập)
+      allow read: if true;
+
+      // Người dùng đăng nhập có thể tạo phòng mới.
+      // Bắt buộc: ownerId phải là UID của người đang đăng nhập.
+      // Trạng thái ban đầu phải là 'pending_approval' (không được tự set 'available').
+      allow create: if isAuthenticated()
+                    && request.resource.data.ownerId == request.auth.uid
+                    && request.resource.data.status == 'pending_approval';
+
+      // ─── UPDATE: Phân quyền chặt chẽ theo vai trò ──────────────────────
+      // Admin: được update mọi field, mọi phòng (duyệt, từ chối, ẩn, khôi phục)
+      // User (chủ phòng): chỉ được sửa phòng của mình với các ràng buộc sau:
+      //   • Không được đổi 'ownerId' (tránh chuyển nhượng lén)
+      //   • Giá trị 'status' mới CHỈ ĐƯỢC LÀ 'pending_approval' hoặc 'hidden'
+      //     → 'available' là quyền duy nhất của Admin (phê duyệt)
+      //     → 'rejected' do Admin gán, user không được tự set
+      allow update: if isAdmin()
+                    || (
+                      isAuthenticated()
+                      && resource.data.ownerId == request.auth.uid
+                      // Không cho phép đổi chủ phòng
+                      && request.resource.data.ownerId == resource.data.ownerId
+                      // Giới hạn các status user được tự gán
+                      && request.resource.data.status in ['pending_approval', 'hidden']
+                    );
+
+      // Xóa phòng: Admin hoặc chính chủ phòng
+      allow delete: if isAdmin() || (
+        isAuthenticated() && resource.data.ownerId == request.auth.uid
+      );
+    }
+
+    // 3. Favorites collection
+    match /favorites/{favId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // 4. Bookings collection
+    match /bookings/{bookingId} {
+      // Người đặt lịch, chủ phòng hoặc admin mới được xem
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid
+        || resource.data.ownerId == request.auth.uid
+        || isAdmin()
+      );
+
+      // Người dùng đăng nhập có thể tạo booking
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+
+      // Chủ phòng hoặc admin hoặc người đặt có thể cập nhật trạng thái lịch hẹn
+      allow update: if isAuthenticated() && (
+        resource.data.ownerId == request.auth.uid
+        || resource.data.userId == request.auth.uid
+        || isAdmin()
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // 5. Reports collection (Tố cáo vi phạm)
+    match /reports/{reportId} {
+      // Người dùng đăng nhập có thể gửi tố cáo
+      allow create: if isAuthenticated() && request.resource.data.reporterId == request.auth.uid;
+
+      // Người gửi hoặc Admin có thể đọc tố cáo
+      allow read: if isAuthenticated() && (resource.data.reporterId == request.auth.uid || isAdmin());
+
+      // Chỉ Admin mới có quyền cập nhật trạng thái tố cáo (resolve / dismiss) hoặc xóa
+      allow update, delete: if isAdmin();
+    }
+
+    // 6. Notifications collection (Thông báo)
+    match /notifications/{notifId} {
+      // Người nhận hoặc Admin hoặc thông báo broadcast ('all')
+      allow read: if isAuthenticated() && (
+        resource.data.recipientId == request.auth.uid
+        || (request.auth.token.email != null && resource.data.recipientId == request.auth.token.email)
+        || resource.data.recipientId == 'all'
+        || isAdmin()
+      );
+
+      // Người dùng chỉ được sửa trường 'isRead' của thông báo gửi cho chính mình
+      allow update: if isAdmin() || (
+        isAuthenticated()
+        && (resource.data.recipientId == request.auth.uid
+            || (request.auth.token.email != null && resource.data.recipientId == request.auth.token.email)
+            || resource.data.recipientId == 'all')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead'])
+      );
+
+      // Cho phép tạo thông báo hệ thống / đặt lịch / phê duyệt
+      allow create: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    // 7. System Settings & AI Knowledge
+    match /system_settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // 8. Reviews collection (Đánh giá phòng trọ)
+    //
+    // LƯU Ý KỸ THUẬT:
+    // Firestore Security Rules không hỗ trợ query (`where`) trong điều kiện `allow`.
+    // Chỉ hỗ trợ `get(path)` với đường dẫn document đầy đủ.
+    // Vì vậy việc kiểm tra "user có booking 'completed' không" KHÔNG THỂ thực hiện
+    // thuần túy trong Rules (vì bookingId không xác định được từ Rules).
+    //
+    // Giải pháp đã áp dụng:
+    //   → Kiểm tra booking 'completed' được thực hiện ở tầng Application (ReviewService.addReview).
+    //   → Rules chỉ đảm bảo:
+    //      • Chỉ user đăng nhập mới được tạo review.
+    //      • userId trong review phải khớp với UID đang đăng nhập.
+    //      • Điểm rating hợp lệ (1 – 5).
+    //      • Mọi người đều đọc được (hỗ trợ hiển thị review công khai).
+    match /reviews/{reviewId} {
+      // Cho phép đọc công khai (hiển thị đánh giá trên trang phòng)
+      allow read: if true;
+
+      // Chỉ user đã đăng nhập mới được tạo review, và phải đúng userId
+      allow create: if isAuthenticated()
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.rating >= 1
+                    && request.resource.data.rating <= 5
+                    && request.resource.data.comment is string
+                    && request.resource.data.comment.size() > 0;
+
+      // Không cho phép sửa review sau khi đã đăng
+      allow update: if false;
+
+      // Chỉ Admin mới được xóa review vi phạm
+      allow delete: if isAdmin();
+    }
+
+    // 9. Chat histories & messages (AI Chatbot)
+    match /chat_histories/{sessionId} {
+      allow read, write: if isAuthenticated() && (
+        resource == null || resource.data.userId == request.auth.uid || isAdmin()
+      );
+
+      match /messages/{messageId} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+
+    // 10. API Rate Limits (Giới hạn số request AI mỗi ngày)
+    //
+    // Mỗi document có DocID = userId, lưu:
+    //   requestCount (int): số lần đã gọi hôm nay
+    //   resetAt (Timestamp): thời điểm reset quota (23:59:59 cùng ngày)
+    //   updatedAt (Timestamp): lần cuối cập nhật
+    //
+    // Quy tắc bảo mật:
+    //   • User chỉ được đọc/ghi quota của chính mình.
+    //   • User KHÔNG được tự set requestCount về 0 (tránh gian lận reset quota).
+    //   • Admin có thể đọc tất cả (thống kê) và reset quota nếu cần.
+    match /api_limits/{userId} {
+      // User đọc quota của chính mình; Admin đọc tất cả (dashboard thống kê)
+      allow read: if isOwner(userId) || isAdmin();
+
+      // Cho phép client tạo document quota lần đầu (khi chưa có)
+      // Bắt buộc: userId trong data phải khớp với auth.uid
+      allow create: if isOwner(userId)
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.requestCount == 1;
+
+      // Cho phép client tăng requestCount (không được tự giảm hoặc reset về 0)
+      // Admin có thể ghi mọi thứ (reset quota thủ công nếu cần hỗ trợ user)
+      allow update: if isAdmin()
+                    || (
+                      isOwner(userId)
+                      // Chỉ được tăng requestCount, không được tự reset
+                      && request.resource.data.requestCount >= resource.data.requestCount
+                      // Không được tự sửa userId
+                      && request.resource.data.userId == resource.data.userId
+                    );
+
+      // Chỉ Admin mới được xóa record quota
+      allow delete: if isAdmin();
+    }
+  }
+}
+

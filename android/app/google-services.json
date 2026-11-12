@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "270166149830",
+    "project_id": "phongtro-ai",
+    "storage_bucket": "phongtro-ai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:270166149830:android:f7688ce9e838c788d265c7",
+        "android_client_info": {
+          "package_name": "com.example.phongtro_ai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAnLMYAp0LbP16Lhbgy7F3lNzVjQ-PR8ew"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:270166149830:android:683f1cad22178fc4d265c7",
+        "android_client_info": {
+          "package_name": "com.tranducco.roomfinder.room_finder_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAnLMYAp0LbP16Lhbgy7F3lNzVjQ-PR8ew"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

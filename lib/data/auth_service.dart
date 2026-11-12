@@ -6,18 +6,28 @@ class AuthService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // 1. Đăng ký tài khoản
-  Future<UserCredential> register(String email, String password) async {
+  Future<UserCredential> register(
+    String email,
+    String password, {
+    String fullName = '',
+    String phoneNumber = '',
+  }) async {
     try {
       // Gọi Firebase Auth tạo tài khoản
       UserCredential userCredential = await _auth
           .createUserWithEmailAndPassword(email: email, password: password);
 
+      // Cập nhật displayName trên Firebase Auth
+      if (fullName.isNotEmpty) {
+        await userCredential.user?.updateDisplayName(fullName);
+      }
+
       // Khởi tạo Document tương ứng bên collection `users` trong Firestore
       await _firestore.collection('users').doc(userCredential.user!.uid).set({
         'uid': userCredential.user!.uid,
         'email': email,
-        'fullName': '',
-        'phoneNumber': '',
+        'fullName': fullName,
+        'phoneNumber': phoneNumber,
         'avatarUrl': '',
         'role': 'user',
         'status': 'active',

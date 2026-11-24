@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../../data/admin_service.dart';
+import '../../../data/ai_rate_limit_service.dart';
 import '../../../data/ai_service.dart';
 import '../../../data/room_service.dart';
 import '../../../domain/models/chat_message.dart';
@@ -115,6 +116,21 @@ class _AiChatSheetState extends State<AiChatSheet> {
       );
 
       _scrollToBottom();
+    } on RateLimitExceededException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: const Color(0xFFD97706),
+            content: Row(
+              children: [
+                const Icon(Icons.speed_rounded, color: Colors.white),
+                const SizedBox(width: 10),
+                Expanded(child: Text(e.message)),
+              ],
+            ),
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -219,14 +235,30 @@ class _AiChatSheetState extends State<AiChatSheet> {
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF004D40), Color(0xFF00897B)],
-              ),
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: Colors.white,
               shape: BoxShape.circle,
+              border: Border.all(color: const Color(0xFF00897B).withAlpha(40), width: 1.5),
+              boxShadow: const [
+                BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 1)),
+              ],
             ),
-            child: const Icon(Icons.smart_toy_rounded, color: Colors.white, size: 22),
+            clipBehavior: Clip.antiAlias,
+            child: ClipOval(
+              child: Image.asset(
+                'assets/images/ai_bot.png',
+                width: 44,
+                height: 44,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => const Icon(
+                  Icons.smart_toy_rounded,
+                  color: Color(0xFF00897B),
+                  size: 22,
+                ),
+              ),
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -235,12 +267,16 @@ class _AiChatSheetState extends State<AiChatSheet> {
               children: [
                 Row(
                   children: [
-                    Text(
-                      _botName,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A1A2E),
+                    Flexible(
+                      child: Text(
+                        _botName,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1A1A2E),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -389,7 +425,32 @@ class _AiChatSheetState extends State<AiChatSheet> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.waving_hand_rounded, color: Color(0xFF00897B), size: 28),
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFF00897B).withAlpha(40), width: 1.5),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2)),
+                    ],
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: ClipOval(
+                    child: Image.asset(
+                      'assets/images/ai_bot.png',
+                      width: 48,
+                      height: 48,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const Icon(
+                        Icons.smart_toy_rounded,
+                        color: Color(0xFF00897B),
+                        size: 26,
+                      ),
+                    ),
+                  ),
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -531,12 +592,30 @@ class _AiChatSheetState extends State<AiChatSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(6),
+                  width: 34,
+                  height: 34,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF00897B).withAlpha(20),
+                    color: Colors.white,
                     shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFF00897B).withAlpha(30), width: 1.2),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 1)),
+                    ],
                   ),
-                  child: const Icon(Icons.smart_toy_rounded, color: Color(0xFF00897B), size: 18),
+                  clipBehavior: Clip.antiAlias,
+                  child: ClipOval(
+                    child: Image.asset(
+                      'assets/images/ai_bot.png',
+                      width: 34,
+                      height: 34,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const Icon(
+                        Icons.smart_toy_rounded,
+                        color: Color(0xFF00897B),
+                        size: 18,
+                      ),
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -673,14 +752,19 @@ class _AiChatSheetState extends State<AiChatSheet> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            '${room.price} triệu/tháng',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF00897B),
+                          Expanded(
+                            child: Text(
+                              '${room.price} triệu/tháng',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF00897B),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
+                          const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(

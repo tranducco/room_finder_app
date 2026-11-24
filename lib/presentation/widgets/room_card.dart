@@ -48,8 +48,10 @@ class _RoomCardState extends State<RoomCard> {
             border: Border.all(
               color: _isHovered
                   ? const Color(0xFF00897B).withAlpha(120)
-                  : Colors.grey.shade200,
-              width: _isHovered ? 1.4 : 1.0,
+                  : (widget.room.isPromotedActive && widget.room.effectivePriority == 3
+                      ? const Color(0xFFFFA000).withAlpha(140)
+                      : Colors.grey.shade200),
+              width: _isHovered ? 1.4 : (widget.room.isPromotedActive && widget.room.effectivePriority == 3 ? 1.3 : 1.0),
             ),
             boxShadow: _isHovered
                 ? [
@@ -82,7 +84,7 @@ class _RoomCardState extends State<RoomCard> {
               Stack(
                 children: [
                   AspectRatio(
-                    aspectRatio: 1.25,
+                    aspectRatio: 1.32,
                     child: ClipRect(
                       child: AnimatedScale(
                         scale: _isHovered ? 1.06 : 1.0,
@@ -97,31 +99,40 @@ class _RoomCardState extends State<RoomCard> {
                       ),
                     ),
                   ),
-                  // Room type tag
-                  if (widget.room.roomType.isNotEmpty)
-                    Positioned(
-                      top: 8,
-                      left: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 3.5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF004D40).withAlpha(200),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          widget.room.roomType,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.3,
+                  // Room type & VIP Package Badges
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.room.isPromotedActive) ...[
+                          _buildVipBadge(widget.room),
+                          const SizedBox(width: 5),
+                        ],
+                        if (widget.room.roomType.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 3.5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF004D40).withAlpha(200),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              widget.room.roomType,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
+                      ],
                     ),
+                  ),
                   // Favorite button
                   Positioned(
                     top: 6,
@@ -161,14 +172,15 @@ class _RoomCardState extends State<RoomCard> {
               ),
               // Info section
               Padding(
-                padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     AnimatedDefaultTextStyle(
                       duration: const Duration(milliseconds: 200),
                       style: TextStyle(
-                        fontSize: 13.5,
+                        fontSize: 13.0,
                         fontWeight: FontWeight.w600,
                         color: _isHovered
                             ? const Color(0xFF00897B)
@@ -179,36 +191,36 @@ class _RoomCardState extends State<RoomCard> {
                       overflow: TextOverflow.ellipsis,
                       child: Text(widget.room.title),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Text(
                       '${currencyFormatter.format(widget.room.price)}/tháng',
                       style: const TextStyle(
-                        fontSize: 14,
+                        fontSize: 13.5,
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF00897B),
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
                         Icon(
                           Icons.square_foot_rounded,
-                          size: 13.5,
+                          size: 13.0,
                           color: Colors.grey.shade600,
                         ),
-                        const SizedBox(width: 4),
+                        const SizedBox(width: 3),
                         Text(
                           '${widget.room.area} m²',
                           style: TextStyle(
                             color: Colors.grey.shade600,
-                            fontSize: 11.5,
+                            fontSize: 11.0,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
                         const Spacer(),
                         Icon(
                           Icons.location_on_rounded,
-                          size: 13.5,
+                          size: 13.0,
                           color: Colors.grey.shade500,
                         ),
                         const SizedBox(width: 2),
@@ -217,7 +229,7 @@ class _RoomCardState extends State<RoomCard> {
                             widget.room.district,
                             style: TextStyle(
                               color: Colors.grey.shade600,
-                              fontSize: 11.5,
+                              fontSize: 11.0,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -230,6 +242,64 @@ class _RoomCardState extends State<RoomCard> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildVipBadge(Room room) {
+    Color startColor;
+    Color endColor;
+    String label;
+    IconData icon;
+
+    final prio = room.effectivePriority;
+    final type = room.packageType.toLowerCase();
+
+    if (prio == 3 || type == 'gold') {
+      startColor = const Color(0xFFFFB300);
+      endColor = const Color(0xFFFFA000);
+      label = 'VÀNG';
+      icon = Icons.workspace_premium_rounded;
+    } else if (prio == 2 || type == 'silver') {
+      startColor = const Color(0xFF90A4AE);
+      endColor = const Color(0xFF78909C);
+      label = 'BẠC';
+      icon = Icons.shield_rounded;
+    } else {
+      startColor = const Color(0xFFD7CCC8);
+      endColor = const Color(0xFFCD7F32);
+      label = 'ĐỒNG';
+      icon = Icons.military_tech_rounded;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [startColor, endColor]),
+        borderRadius: BorderRadius.circular(6),
+        boxShadow: [
+          BoxShadow(
+            color: endColor.withAlpha(120),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: Colors.white),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 9.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.4,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -115,6 +115,15 @@ class _MyRoomsScreenState extends State<MyRoomsScreen> {
       appBar: AppBar(
         title: const Text('Phòng tôi đã đăng'),
         actions: [
+          TextButton.icon(
+            onPressed: () => Navigator.pushNamed(context, '/packages'),
+            icon: const Icon(Icons.bolt_rounded, size: 18),
+            label: const Text('Bảng giá VIP'),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF00695C),
+              textStyle: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _loadMyRooms),
         ],
       ),
@@ -199,8 +208,11 @@ class _MyRoomsScreenState extends State<MyRoomsScreen> {
                             horizontal: 12,
                             vertical: 8,
                           ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          child: Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            runSpacing: 6,
                             children: [
                               if (room.status == 'pending_approval')
                                 Container(
@@ -347,7 +359,43 @@ class _MyRoomsScreenState extends State<MyRoomsScreen> {
                                   ],
                                 ),
                               Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
+                                  // Nút Mua / Gia hạn gói VIP cho phòng
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      Navigator.pushNamed(
+                                        context,
+                                        '/packages',
+                                        arguments: {'preselectedRoomId': room.roomId},
+                                      ).then((_) => _loadMyRooms());
+                                    },
+                                    icon: Icon(
+                                      room.isPromotedActive ? Icons.workspace_premium_rounded : Icons.bolt_rounded,
+                                      size: 16,
+                                      color: room.isPromotedActive
+                                          ? (room.effectivePriority == 3
+                                              ? const Color(0xFFFFA000)
+                                              : (room.effectivePriority == 2
+                                                  ? const Color(0xFF78909C)
+                                                  : const Color(0xFFCD7F32)))
+                                          : const Color(0xFF00897B),
+                                    ),
+                                    label: Text(
+                                      room.isPromotedActive
+                                          ? '${room.packageType.toUpperCase()} (${room.packageRemainingDays}d)'
+                                          : 'Đẩy tin VIP',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: room.isPromotedActive
+                                            ? (room.effectivePriority == 3
+                                                ? const Color(0xFFE65100)
+                                                : const Color(0xFF37474F))
+                                            : const Color(0xFF00897B),
+                                      ),
+                                    ),
+                                  ),
                                   TextButton.icon(
                                     onPressed: () async {
                                       final res = await Navigator.pushNamed(

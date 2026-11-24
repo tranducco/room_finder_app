@@ -362,6 +362,9 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
           rejectionReason: _roomToEdit!.status == 'rejected'
               ? null
               : _roomToEdit!.rejectionReason,
+          createdAt: _roomToEdit!.createdAt,
+          expiredAt: _roomToEdit!.expiredAt,
+          vipType: _roomToEdit!.vipType,
         );
 
         await _roomService.updateRoom(updatedRoom);
@@ -396,6 +399,8 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
           roomType: _selectedRoomType,
           status: 'pending_approval',
           createdAt: DateTime.now(),
+          expiredAt: DateTime.now().add(const Duration(days: 10)),
+          vipType: 'normal',
         );
 
         await _roomService.createRoom(newRoom);
@@ -468,91 +473,161 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
                     },
                   ),
                   const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _priceController,
-                          decoration: _inputDecoration(
-                            label: 'Giá thuê (VNĐ) *',
-                            hint: '3500000',
-                            icon: Icons.payments_outlined,
-                            suffix: 'đ',
-                          ),
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                          ],
-                          validator: (val) {
-                            if (val == null || val.trim().isEmpty) {
-                              return 'Nhập giá thuê';
-                            }
-                            return null;
-                          },
-                        ),
+                  if (MediaQuery.of(context).size.width < 540) ...[
+                    TextFormField(
+                      controller: _priceController,
+                      decoration: _inputDecoration(
+                        label: 'Giá thuê (VNĐ) *',
+                        hint: '3500000',
+                        icon: Icons.payments_outlined,
+                        suffix: 'đ',
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _areaController,
-                          decoration: _inputDecoration(
-                            label: 'Diện tích (m²) *',
-                            hint: '25',
-                            icon: Icons.square_foot_rounded,
-                            suffix: 'm²',
-                          ),
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                          ],
-                          validator: (val) {
-                            if (val == null || val.trim().isEmpty) {
-                              return 'Nhập diện tích';
-                            }
-                            return null;
-                          },
-                        ),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                      ],
+                      validator: (val) {
+                        if (val == null || val.trim().isEmpty) {
+                          return 'Nhập giá thuê';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _areaController,
+                      decoration: _inputDecoration(
+                        label: 'Diện tích (m²) *',
+                        hint: '25',
+                        icon: Icons.square_foot_rounded,
+                        suffix: 'm²',
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                      ],
+                      validator: (val) {
+                        if (val == null || val.trim().isEmpty) {
+                          return 'Nhập diện tích';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _depositController,
+                      decoration: _inputDecoration(
+                        label: 'Tiền cọc (VNĐ)',
+                        hint: 'VD: 3500000',
+                        icon: Icons.security_rounded,
+                        suffix: 'đ',
+                      ),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _electricityController,
+                      decoration: _inputDecoration(
+                        label: 'Giá điện (VNĐ/kWh)',
+                        hint: 'VD: 3800',
+                        icon: Icons.electric_bolt_rounded,
+                        suffix: 'đ',
+                      ),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                      ],
+                    ),
+                  ] else ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _priceController,
+                            decoration: _inputDecoration(
+                              label: 'Giá thuê (VNĐ) *',
+                              hint: '3500000',
+                              icon: Icons.payments_outlined,
+                              suffix: 'đ',
+                            ),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            validator: (val) {
+                              if (val == null || val.trim().isEmpty) {
+                                return 'Nhập giá thuê';
+                              }
+                              return null;
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _areaController,
+                            decoration: _inputDecoration(
+                              label: 'Diện tích (m²) *',
+                              hint: '25',
+                              icon: Icons.square_foot_rounded,
+                              suffix: 'm²',
+                            ),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            validator: (val) {
+                              if (val == null || val.trim().isEmpty) {
+                                return 'Nhập diện tích';
+                              }
+                              return null;
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
 
-                  // Tiền cọc & Chi phí điện nước
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _depositController,
-                          decoration: _inputDecoration(
-                            label: 'Tiền cọc (VNĐ)',
-                            hint: 'VD: 3500000',
-                            icon: Icons.security_rounded,
-                            suffix: 'đ',
+                    // Tiền cọc & Chi phí điện nước
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _depositController,
+                            decoration: _inputDecoration(
+                              label: 'Tiền cọc (VNĐ)',
+                              hint: 'VD: 3500000',
+                              icon: Icons.security_rounded,
+                              suffix: 'đ',
+                            ),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
                           ),
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                          ],
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _electricityController,
-                          decoration: _inputDecoration(
-                            label: 'Giá điện (VNĐ/kWh)',
-                            hint: 'VD: 3800',
-                            icon: Icons.electric_bolt_rounded,
-                            suffix: 'đ',
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _electricityController,
+                            decoration: _inputDecoration(
+                              label: 'Giá điện (VNĐ/kWh)',
+                              hint: 'VD: 3800',
+                              icon: Icons.electric_bolt_rounded,
+                              suffix: 'đ',
+                            ),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
                           ),
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                          ],
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 14),
                   TextFormField(
                     controller: _waterController,

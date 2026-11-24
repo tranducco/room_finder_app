@@ -30,11 +30,16 @@ class AdminRoomDetailDialog extends StatelessWidget {
       symbol: 'đ',
     );
 
+    final screenWidth = MediaQuery.of(context).size.width;
+    final dialogWidth = screenWidth > 760 ? 720.0 : screenWidth * 0.94;
+    final isSmall = screenWidth < 720;
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       clipBehavior: Clip.antiAlias,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
       child: Container(
-        width: 720,
+        width: dialogWidth,
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * 0.88,
         ),
@@ -43,7 +48,7 @@ class AdminRoomDetailDialog extends StatelessWidget {
           children: [
             // Topbar
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              padding: EdgeInsets.symmetric(horizontal: isSmall ? 14 : 24, vertical: 14),
               decoration: BoxDecoration(
                 color: const Color(0xFFF9FAFB),
                 border: Border(
@@ -181,6 +186,55 @@ class AdminRoomDetailDialog extends StatelessWidget {
                       room.ownerId,
                     ),
 
+                    // Utility Costs & Deposit
+                    if (room.deposit > 0 ||
+                        room.electricityPrice > 0 ||
+                        room.waterPrice > 0) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _costCell(
+                                Icons.security_rounded,
+                                'Tiền cọc',
+                                room.deposit > 0
+                                    ? currencyFormatter.format(room.deposit)
+                                    : 'Không cọc',
+                                Colors.deepPurple,
+                              ),
+                            ),
+                            Expanded(
+                              child: _costCell(
+                                Icons.electric_bolt_rounded,
+                                'Điện',
+                                room.electricityPrice > 0
+                                    ? '${currencyFormatter.format(room.electricityPrice)}/kWh'
+                                    : 'Nhà nước',
+                                Colors.amber.shade800,
+                              ),
+                            ),
+                            Expanded(
+                              child: _costCell(
+                                Icons.water_drop_rounded,
+                                'Nước',
+                                room.waterPrice > 0
+                                    ? '${currencyFormatter.format(room.waterPrice)}/m³'
+                                    : 'Nhà nước',
+                                Colors.blue.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
                     if (room.rejectionReason != null &&
                         room.rejectionReason!.isNotEmpty) ...[
                       const SizedBox(height: 12),
@@ -277,14 +331,18 @@ class AdminRoomDetailDialog extends StatelessWidget {
 
             // Actions Footer
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              padding: EdgeInsets.symmetric(horizontal: isSmall ? 14 : 24, vertical: 12),
               decoration: BoxDecoration(
                 color: const Color(0xFFF9FAFB),
                 border: Border(
                   top: BorderSide(color: Colors.grey.shade200, width: 1),
                 ),
               ),
-              child: Row(
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   // Xóa tin
                   TextButton.icon(
@@ -299,63 +357,68 @@ class AdminRoomDetailDialog extends StatelessWidget {
                       style: TextStyle(color: Colors.red.shade600),
                     ),
                   ),
-                  const Spacer(),
 
-                  // Nếu là hidden -> Khôi phục
-                  if (room.status == 'hidden') ...[
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        onRestore();
-                      },
-                      icon: const Icon(Icons.restore_rounded, size: 16),
-                      label: const Text('Khôi phục hiển thị'),
-                      style: AppButtonStyle.primary(),
-                    ),
-                  ],
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      // Nếu là hidden -> Khôi phục
+                      if (room.status == 'hidden') ...[
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            onRestore();
+                          },
+                          icon: const Icon(Icons.restore_rounded, size: 16),
+                          label: const Text('Khôi phục hiển thị'),
+                          style: AppButtonStyle.primary(),
+                        ),
+                      ],
 
-                  // Nếu là available -> Ẩn
-                  if (room.status == 'available') ...[
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        onHide();
-                      },
-                      icon: const Icon(Icons.visibility_off_outlined, size: 16),
-                      label: const Text('Ẩn tin'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.orange.shade800,
-                        side: BorderSide(color: Colors.orange.shade300),
-                      ),
-                    ),
-                  ],
+                      // Nếu là available -> Ẩn
+                      if (room.status == 'available') ...[
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            onHide();
+                          },
+                          icon: const Icon(Icons.visibility_off_outlined, size: 16),
+                          label: const Text('Ẩn tin'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.orange.shade800,
+                            side: BorderSide(color: Colors.orange.shade300),
+                          ),
+                        ),
+                      ],
 
-                  // Nếu đang chờ duyệt hoặc bị reject -> Cho phép Duyệt
-                  if (room.status == 'pending_approval' ||
-                      room.status == 'rejected') ...[
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _showRejectPrompt(context);
-                      },
-                      icon: const Icon(Icons.close_rounded, size: 16),
-                      label: const Text('Từ chối duyệt'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red.shade700,
-                        side: BorderSide(color: Colors.red.shade300),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        onApprove();
-                      },
-                      icon: const Icon(Icons.check_rounded, size: 16),
-                      label: const Text('Duyệt tin ngay'),
-                      style: AppButtonStyle.primary(),
-                    ),
-                  ],
+                      // Nếu đang chờ duyệt hoặc bị reject -> Cho phép Duyệt
+                      if (room.status == 'pending_approval' ||
+                          room.status == 'rejected') ...[
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _showRejectPrompt(context);
+                          },
+                          icon: const Icon(Icons.close_rounded, size: 16),
+                          label: const Text('Từ chối duyệt'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red.shade700,
+                            side: BorderSide(color: Colors.red.shade300),
+                          ),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            onApprove();
+                          },
+                          icon: const Icon(Icons.check_rounded, size: 16),
+                          label: const Text('Duyệt tin ngay'),
+                          style: AppButtonStyle.primary(),
+                        ),
+                      ],
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -441,6 +504,40 @@ class AdminRoomDetailDialog extends StatelessWidget {
               color: Colors.grey.shade700,
             ),
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _costCell(
+    IconData icon,
+    String label,
+    String value,
+    Color color,
+  ) {
+    return Column(
+      children: [
+        Icon(icon, size: 20, color: color),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey.shade600,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
       ],
     );

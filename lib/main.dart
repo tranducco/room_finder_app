@@ -14,7 +14,14 @@ import 'presentation/room/my_rooms_screen.dart';
 import 'presentation/room/my_bookings_screen.dart';
 import 'presentation/widgets/app_button_style.dart';
 import 'core/guards/admin_guard.dart';
+import 'domain/models/package_plan.dart';
+import 'domain/models/room.dart';
 import 'presentation/admin/admin_dashboard_screen.dart';
+import 'presentation/package/packages_screen.dart';
+import 'presentation/package/order_confirmation_screen.dart';
+import 'presentation/package/payment_processing_screen.dart';
+import 'presentation/package/payment_result_screen.dart';
+import 'presentation/package/my_packages_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,7 +36,7 @@ class RoomFinderApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'RoomFinder',
+      title: 'Trọ Tốt | Hệ thống mua bán, cho thuê phòng trọ tại Hà Nội',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
@@ -96,6 +103,70 @@ class RoomFinderApp extends StatelessWidget {
         '/my-rooms': (context) => const MyRoomsScreen(),
         '/my-bookings': (context) => const MyBookingsScreen(),
         '/admin': (context) => const AdminGuard(child: AdminDashboardScreen()),
+        '/packages': (context) => const PackagesScreen(),
+        '/my-packages': (context) => const MyPackagesScreen(),
+      },
+      onGenerateRoute: (settings) {
+        if (settings.name == '/packages') {
+          final args = settings.arguments as Map<String, dynamic>?;
+          return MaterialPageRoute(
+            builder: (_) => PackagesScreen(
+              preselectedRoomId: args?['preselectedRoomId'] as String?,
+            ),
+          );
+        }
+        if (settings.name == '/order-confirmation') {
+          final args = settings.arguments as Map<String, dynamic>;
+          return MaterialPageRoute(
+            builder: (_) => OrderConfirmationScreen(
+              package: args['package'] as PackagePlan,
+              preselectedRoomId: args['preselectedRoomId'] as String?,
+            ),
+          );
+        }
+        if (settings.name == '/payment-processing') {
+          final args = settings.arguments as Map<String, dynamic>;
+          return MaterialPageRoute(
+            builder: (_) => PaymentProcessingScreen(
+              orderId: args['orderId'] as String,
+              package: args['package'] as PackagePlan,
+              room: args['room'] as Room,
+              payUrl: args['payUrl'] as String?,
+              qrCodeUrl: args['qrCodeUrl'] as String?,
+              deeplink: args['deeplink'] as String?,
+            ),
+          );
+        }
+        if (settings.name == '/payment-result') {
+          final args = settings.arguments as Map<String, dynamic>;
+          return MaterialPageRoute(
+            builder: (_) => PaymentResultScreen(
+              isSuccess: args['isSuccess'] as bool? ?? false,
+              orderId: args['orderId'] as String? ?? '',
+              package: args['package'] as PackagePlan? ?? PackagePlan.defaultPlans.first,
+              room: args['room'] as Room? ??
+                  Room(
+                    roomId: '',
+                    ownerId: '',
+                    title: 'Phòng trọ',
+                    description: '',
+                    price: 0,
+                    area: 0,
+                    address: '',
+                    district: '',
+                    images: [],
+                    amenities: [],
+                    roomType: '',
+                    status: '',
+                  ),
+              paidAt: args['paidAt'] as DateTime?,
+              expiresAt: args['expiresAt'] as DateTime?,
+              transId: args['transId'] as String?,
+              errorMessage: args['errorMessage'] as String?,
+            ),
+          );
+        }
+        return null;
       },
     );
   }

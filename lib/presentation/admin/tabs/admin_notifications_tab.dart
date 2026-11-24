@@ -273,34 +273,37 @@ class _AdminNotificationsTabState extends State<AdminNotificationsTab> {
   @override
   Widget build(BuildContext context) {
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+    final isSmall = MediaQuery.of(context).size.width < 720;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.all(isSmall ? 12 : 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Title
-            const Text(
+            Text(
               'Gửi Thông báo Hệ thống',
               style: TextStyle(
-                fontSize: 24,
+                fontSize: isSmall ? 18 : 24,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF1A1A2E),
+                color: const Color(0xFF1A1A2E),
               ),
             ),
             const SizedBox(height: 4),
             Text(
               'Phát thông báo đẩy tới toàn bộ người dùng hoặc gửi trực tiếp cho một tài khoản cụ thể',
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              style: TextStyle(fontSize: isSmall ? 12 : 13, color: Colors.grey.shade600),
+              maxLines: isSmall ? 1 : 2,
+              overflow: TextOverflow.ellipsis,
             ),
 
-            const SizedBox(height: 24),
+            SizedBox(height: isSmall ? 14 : 24),
 
             // Form Compose Box
             Container(
-              padding: const EdgeInsets.all(24),
+              padding: EdgeInsets.all(isSmall ? 12 : 24),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
@@ -328,16 +331,16 @@ class _AdminNotificationsTabState extends State<AdminNotificationsTab> {
 
                   // Broadcast vs Targeted Selection
                   SegmentedButton<bool>(
-                    segments: const [
+                    segments: [
                       ButtonSegment<bool>(
                         value: true,
-                        label: Text('Gửi toàn bộ người dùng (Broadcast)'),
-                        icon: Icon(Icons.campaign_rounded),
+                        label: Text(isSmall ? 'Toàn bộ' : 'Gửi toàn bộ người dùng (Broadcast)'),
+                        icon: const Icon(Icons.campaign_rounded),
                       ),
                       ButtonSegment<bool>(
                         value: false,
-                        label: Text('Gửi riêng cho một người dùng (UID/Email)'),
-                        icon: Icon(Icons.person_rounded),
+                        label: Text(isSmall ? 'Cá nhân' : 'Gửi riêng cho một người dùng (UID/Email)'),
+                        icon: const Icon(Icons.person_rounded),
                       ),
                     ],
                     selected: {_isBroadcast},
@@ -583,8 +586,10 @@ class _AdminNotificationsTabState extends State<AdminNotificationsTab> {
                             child: Text(
                               notif.title,
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
+                          const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(

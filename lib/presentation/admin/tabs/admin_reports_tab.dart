@@ -58,11 +58,12 @@ class _AdminReportsTabState extends State<AdminReportsTab> {
   @override
   Widget build(BuildContext context) {
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+    final isSmall = MediaQuery.of(context).size.width < 720;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.all(isSmall ? 12 : 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -70,76 +71,88 @@ class _AdminReportsTabState extends State<AdminReportsTab> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Tiếp nhận & Xử lý Báo cáo vi phạm',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A1A2E),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Tiếp nhận & Xử lý Báo cáo',
+                        style: TextStyle(
+                          fontSize: isSmall ? 18 : 24,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF1A1A2E),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Kiểm tra phản ánh từ người dùng về tin phòng trọ gian lận, sai lệch hoặc vi phạm tiêu chuẩn cộng đồng',
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                    ),
-                  ],
-                ),
-                ElevatedButton.icon(
-                  onPressed: _loadReports,
-                  icon: const Icon(Icons.refresh_rounded, size: 16),
-                  label: const Text('Làm mới'),
-                  style: AppButtonStyle.primary(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Kiểm tra phản ánh từ người dùng về tin phòng trọ gian lận, sai lệch hoặc vi phạm tiêu chuẩn cộng đồng',
+                        style: TextStyle(fontSize: isSmall ? 12 : 13, color: Colors.grey.shade600),
+                        maxLines: isSmall ? 1 : 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
+                const SizedBox(width: 8),
+                isSmall
+                    ? IconButton(
+                        onPressed: _loadReports,
+                        icon: const Icon(Icons.refresh_rounded, color: Color(0xFF00897B)),
+                        tooltip: 'Làm mới',
+                      )
+                    : ElevatedButton.icon(
+                        onPressed: _loadReports,
+                        icon: const Icon(Icons.refresh_rounded, size: 16),
+                        label: const Text('Làm mới'),
+                        style: AppButtonStyle.primary(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                      ),
               ],
             ),
 
-            const SizedBox(height: 20),
+            SizedBox(height: isSmall ? 12 : 20),
 
             // Filter Chips
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.symmetric(
+                horizontal: isSmall ? 10 : 16,
+                vertical: isSmall ? 8 : 12,
+              ),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: Colors.grey.shade200),
               ),
-              child: Row(
-                children: [
-                  const Text(
-                    'Trạng thái báo cáo: ',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                  ),
-                  const SizedBox(width: 12),
-                  _statusChip('all', 'Tất cả (${_allReports.length})'),
-                  const SizedBox(width: 8),
-                  _statusChip(
-                    'pending',
-                    'Chờ xử lý (${_countStatus('pending')})',
-                    color: Colors.red.shade700,
-                  ),
-                  const SizedBox(width: 8),
-                  _statusChip(
-                    'resolved',
-                    'Đã giải quyết (${_countStatus('resolved')})',
-                    color: Colors.green.shade700,
-                  ),
-                  const SizedBox(width: 8),
-                  _statusChip(
-                    'dismissed',
-                    'Đã bác bỏ (${_countStatus('dismissed')})',
-                    color: Colors.grey.shade700,
-                  ),
-                ],
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _statusChip('all', 'Tất cả (${_allReports.length})'),
+                    const SizedBox(width: 6),
+                    _statusChip(
+                      'pending',
+                      'Chờ xử lý (${_countStatus('pending')})',
+                      color: Colors.red.shade700,
+                    ),
+                    const SizedBox(width: 6),
+                    _statusChip(
+                      'resolved',
+                      'Đã giải quyết (${_countStatus('resolved')})',
+                      color: Colors.green.shade700,
+                    ),
+                    const SizedBox(width: 6),
+                    _statusChip(
+                      'dismissed',
+                      'Đã bác bỏ (${_countStatus('dismissed')})',
+                      color: Colors.grey.shade700,
+                    ),
+                  ],
+                ),
               ),
             ),
 
-            const SizedBox(height: 20),
+            SizedBox(height: isSmall ? 12 : 20),
 
             // Content
             if (_isLoading)
@@ -152,7 +165,7 @@ class _AdminReportsTabState extends State<AdminReportsTab> {
             else if (_filteredReports.isEmpty)
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(48),
+                padding: EdgeInsets.symmetric(horizontal: 24, vertical: isSmall ? 28 : 48),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
@@ -160,20 +173,22 @@ class _AdminReportsTabState extends State<AdminReportsTab> {
                 ),
                 child: Column(
                   children: [
-                    Icon(Icons.shield_rounded, size: 48, color: Colors.green.shade400),
-                    const SizedBox(height: 12),
-                    const Text(
+                    Icon(Icons.shield_rounded, size: isSmall ? 36 : 48, color: Colors.green.shade400),
+                    const SizedBox(height: 10),
+                    Text(
                       'Không có báo cáo vi phạm nào trong mục này',
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: isSmall ? 14 : 16,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A1A2E),
+                        color: const Color(0xFF1A1A2E),
                       ),
+                      textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Text(
                       'Tất cả phản ánh vi phạm đã được xử lý triệt để.',
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                      style: TextStyle(fontSize: isSmall ? 12 : 13, color: Colors.grey.shade600),
+                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
@@ -238,15 +253,18 @@ class _AdminReportsTabState extends State<AdminReportsTab> {
                                 children: [
                                   Row(
                                     children: [
-                                      Text(
-                                        report.reason,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF1A1A2E),
+                                      Expanded(
+                                        child: Text(
+                                          report.reason,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF1A1A2E),
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
-                                      const SizedBox(width: 12),
+                                      const SizedBox(width: 8),
                                       _badgeForStatus(report.status),
                                     ],
                                   ),
@@ -313,33 +331,37 @@ class _AdminReportsTabState extends State<AdminReportsTab> {
                         // Action Buttons if pending
                         if (isPending) ...[
                           const SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            alignment: WrapAlignment.end,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
                               OutlinedButton.icon(
                                 onPressed: () => _viewReportedRoom(report.roomId),
-                                icon: const Icon(Icons.open_in_new_rounded, size: 16),
-                                label: const Text('Xem phòng bị tố cáo'),
+                                icon: const Icon(Icons.open_in_new_rounded, size: 15),
+                                label: const Text('Xem phòng'),
                                 style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                 ),
                               ),
-                              const SizedBox(width: 10),
                               TextButton.icon(
                                 onPressed: () => _dismissReport(report),
-                                icon: const Icon(Icons.close_rounded, size: 16),
-                                label: const Text('Bác bỏ tố cáo'),
-                                style: TextButton.styleFrom(foregroundColor: Colors.grey.shade700),
+                                icon: const Icon(Icons.close_rounded, size: 15),
+                                label: const Text('Bác bỏ'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.grey.shade700,
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                ),
                               ),
-                              const SizedBox(width: 10),
                               ElevatedButton.icon(
                                 onPressed: () => _resolveReport(report),
-                                icon: const Icon(Icons.shield_rounded, size: 16),
-                                label: const Text('Gỡ tin & Giải quyết'),
+                                icon: const Icon(Icons.shield_rounded, size: 15),
+                                label: const Text('Gỡ tin vi phạm'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.red.shade600,
                                   foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                 ),
                               ),
                             ],
@@ -365,6 +387,9 @@ class _AdminReportsTabState extends State<AdminReportsTab> {
     return ChoiceChip(
       label: Text(label),
       selected: isSelected,
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       onSelected: (selected) {
         if (selected) {
           setState(() => _selectedStatus = key);

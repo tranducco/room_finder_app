@@ -104,11 +104,12 @@ class _AdminRoomsTabState extends State<AdminRoomsTab> {
       locale: 'vi_VN',
       symbol: 'đ',
     );
+    final isSmall = MediaQuery.of(context).size.width < 720;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.all(isSmall ? 12 : 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -116,43 +117,54 @@ class _AdminRoomsTabState extends State<AdminRoomsTab> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Quản lý & Kiểm duyệt tin đăng',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A1A2E),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Quản lý & Kiểm duyệt tin đăng',
+                        style: TextStyle(
+                          fontSize: isSmall ? 18 : 24,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF1A1A2E),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Tìm kiếm, duyệt, từ chối, ẩn hoặc xóa tin đăng toàn sàn',
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                    ),
-                  ],
-                ),
-                ElevatedButton.icon(
-                  onPressed: _loadRooms,
-                  icon: const Icon(Icons.refresh_rounded, size: 16),
-                  label: const Text('Làm mới'),
-                  style: AppButtonStyle.primary(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Tìm kiếm, duyệt, từ chối, ẩn hoặc xóa tin đăng toàn sàn',
+                        style: TextStyle(fontSize: isSmall ? 12 : 13, color: Colors.grey.shade600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
+                const SizedBox(width: 8),
+                isSmall
+                    ? IconButton.filled(
+                        onPressed: _loadRooms,
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        style: IconButton.styleFrom(backgroundColor: const Color(0xFF00897B)),
+                      )
+                    : ElevatedButton.icon(
+                        onPressed: _loadRooms,
+                        icon: const Icon(Icons.refresh_rounded, size: 16),
+                        label: const Text('Làm mới'),
+                        style: AppButtonStyle.primary(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                      ),
               ],
             ),
 
-            const SizedBox(height: 20),
+            SizedBox(height: isSmall ? 12 : 16),
 
             // Filter & Search Card
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(isSmall ? 10 : 16),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: Colors.grey.shade200),
                 boxShadow: [
                   BoxShadow(
@@ -166,98 +178,169 @@ class _AdminRoomsTabState extends State<AdminRoomsTab> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Search row & District Dropdown
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _searchController,
-                          decoration: InputDecoration(
-                            hintText: 'Tìm kiếm theo tên phòng, địa chỉ, mã tin, Owner ID...',
-                            prefixIcon: const Icon(Icons.search, size: 20),
-                            suffixIcon: _searchController.text.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () {
-                                      _searchController.clear();
-                                    },
-                                  )
-                                : null,
-                            filled: true,
-                            fillColor: const Color(0xFFF9FAFB),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(color: Colors.grey.shade300),
+                  if (isSmall) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: SizedBox(
+                            height: 40,
+                            child: TextField(
+                              controller: _searchController,
+                              style: const TextStyle(fontSize: 13),
+                              decoration: InputDecoration(
+                                hintText: 'Tìm phòng, mã tin...',
+                                hintStyle: const TextStyle(fontSize: 12),
+                                prefixIcon: const Icon(Icons.search, size: 18),
+                                suffixIcon: _searchController.text.isNotEmpty
+                                    ? IconButton(
+                                        icon: const Icon(Icons.clear, size: 16),
+                                        onPressed: () => _searchController.clear(),
+                                      )
+                                    : null,
+                                filled: true,
+                                fillColor: const Color(0xFFF9FAFB),
+                                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 8),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(color: Colors.grey.shade300),
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 16),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF9FAFB),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _selectedDistrict,
-                            items: _districts.map((d) {
-                              return DropdownMenuItem(value: d, child: Text(d));
-                            }).toList(),
-                            onChanged: (val) {
-                              if (val != null) {
-                                setState(() => _selectedDistrict = val);
-                                _applyFilters();
-                              }
-                            },
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: Container(
+                            height: 40,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF9FAFB),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.grey.shade300),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _selectedDistrict,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 12, color: Color(0xFF1A1A2E)),
+                                items: _districts.map((d) {
+                                  return DropdownMenuItem(
+                                    value: d,
+                                    child: Text(d, overflow: TextOverflow.ellipsis, maxLines: 1),
+                                  );
+                                }).toList(),
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    setState(() => _selectedDistrict = val);
+                                    _applyFilters();
+                                  }
+                                },
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ] else ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            decoration: InputDecoration(
+                              hintText: 'Tìm kiếm theo tên phòng, địa chỉ, mã tin, Owner ID...',
+                              prefixIcon: const Icon(Icons.search, size: 20),
+                              suffixIcon: _searchController.text.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear, size: 18),
+                                      onPressed: () => _searchController.clear(),
+                                    )
+                                  : null,
+                              filled: true,
+                              fillColor: const Color(0xFFF9FAFB),
+                              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(color: Colors.grey.shade300),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF9FAFB),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.grey.shade300),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: _selectedDistrict,
+                              items: _districts.map((d) {
+                                return DropdownMenuItem(value: d, child: Text(d));
+                              }).toList(),
+                              onChanged: (val) {
+                                if (val != null) {
+                                  setState(() => _selectedDistrict = val);
+                                  _applyFilters();
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
 
-                  const SizedBox(height: 14),
+                  SizedBox(height: isSmall ? 8 : 14),
 
                   // Status Filter Chips
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _statusFilterChip('all', 'Tất cả (${_allRooms.length})'),
-                      _statusFilterChip(
-                        'pending_approval',
-                        'Chờ duyệt (${_countStatus('pending_approval')})',
-                        color: Colors.amber.shade800,
-                      ),
-                      _statusFilterChip(
-                        'available',
-                        'Đang hiển thị (${_countStatus('available')})',
-                        color: const Color(0xFF00897B),
-                      ),
-                      _statusFilterChip(
-                        'rented',
-                        'Đã cho thuê (${_countStatus('rented')})',
-                        color: Colors.blue.shade700,
-                      ),
-                      _statusFilterChip(
-                        'hidden',
-                        'Tạm ẩn (${_countStatus('hidden')})',
-                        color: Colors.grey.shade700,
-                      ),
-                      _statusFilterChip(
-                        'rejected',
-                        'Bị từ chối (${_countStatus('rejected')})',
-                        color: Colors.red.shade700,
-                      ),
-                    ],
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _statusFilterChip('all', 'Tất cả (${_allRooms.length})'),
+                        const SizedBox(width: 6),
+                        _statusFilterChip(
+                          'pending_approval',
+                          'Chờ duyệt (${_countStatus('pending_approval')})',
+                          color: Colors.amber.shade800,
+                        ),
+                        const SizedBox(width: 6),
+                        _statusFilterChip(
+                          'available',
+                          'Đang hiển thị (${_countStatus('available')})',
+                          color: const Color(0xFF00897B),
+                        ),
+                        const SizedBox(width: 6),
+                        _statusFilterChip(
+                          'rented',
+                          'Đã cho thuê (${_countStatus('rented')})',
+                          color: Colors.blue.shade700,
+                        ),
+                        const SizedBox(width: 6),
+                        _statusFilterChip(
+                          'hidden',
+                          'Tạm ẩn (${_countStatus('hidden')})',
+                          color: Colors.grey.shade700,
+                        ),
+                        const SizedBox(width: 6),
+                        _statusFilterChip(
+                          'rejected',
+                          'Bị từ chối (${_countStatus('rejected')})',
+                          color: Colors.red.shade700,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
 
-            const SizedBox(height: 20),
+            SizedBox(height: isSmall ? 12 : 20),
 
             // Content List
             if (_isLoading)
@@ -317,6 +400,142 @@ class _AdminRoomsTabState extends State<AdminRoomsTab> {
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (ctx, index) {
                     final room = _filteredRooms[index];
+                    if (isSmall) {
+                      return Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Thumbnail (64x64)
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: SizedBox(
+                                    width: 64,
+                                    height: 64,
+                                    child: room.images.isNotEmpty
+                                        ? Image.network(
+                                            room.images.first,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, _, _) => Container(
+                                              color: Colors.grey.shade200,
+                                              child: const Icon(Icons.apartment, size: 24),
+                                            ),
+                                          )
+                                        : Container(
+                                            color: Colors.grey.shade200,
+                                            child: const Icon(Icons.apartment, size: 24),
+                                          ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          _buildBadge(room.status),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: Text(
+                                              'ID: ${room.roomId}',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.grey.shade500,
+                                                fontFamily: 'monospace',
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        room.title,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF1A1A2E),
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            // Price, Area, District
+                            Row(
+                              children: [
+                                Text(
+                                  '${currencyFormatter.format(room.price)}/tháng',
+                                  style: const TextStyle(
+                                    color: Color(0xFF00897B),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '• ${room.area}m²',
+                                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '• ${room.district}',
+                                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const Divider(height: 14),
+                            // Action Buttons row aligned right
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                if (room.status == 'pending_approval' ||
+                                    room.status == 'rejected')
+                                  IconButton(
+                                    icon: const Icon(Icons.check_circle_outline_rounded, color: Color(0xFF00897B), size: 22),
+                                    tooltip: 'Duyệt bài đăng',
+                                    onPressed: () => _approve(room),
+                                  ),
+                                if (room.status == 'available')
+                                  IconButton(
+                                    icon: Icon(Icons.visibility_off_outlined, color: Colors.orange.shade800, size: 22),
+                                    tooltip: 'Ẩn tin',
+                                    onPressed: () => _hide(room),
+                                  ),
+                                if (room.status == 'hidden')
+                                  IconButton(
+                                    icon: const Icon(Icons.restore_rounded, color: Color(0xFF00897B), size: 22),
+                                    tooltip: 'Khôi phục',
+                                    onPressed: () => _restore(room),
+                                  ),
+                                IconButton(
+                                  icon: const Icon(Icons.remove_red_eye_outlined, color: Color(0xFF2C3E50), size: 22),
+                                  tooltip: 'Xem chi tiết & thao tác',
+                                  onPressed: () => _openDetailDialog(room),
+                                ),
+                                IconButton(
+                                  icon: Icon(Icons.delete_outline_rounded, color: Colors.red.shade600, size: 22),
+                                  tooltip: 'Xóa bài đăng vĩnh viễn',
+                                  onPressed: () => _confirmDelete(room),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
                     return Padding(
                       padding: const EdgeInsets.all(16),
                       child: Row(
@@ -511,6 +730,9 @@ class _AdminRoomsTabState extends State<AdminRoomsTab> {
     return ChoiceChip(
       label: Text(label),
       selected: isSelected,
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       onSelected: (selected) {
         if (selected) {
           setState(() => _selectedStatus = statusKey);

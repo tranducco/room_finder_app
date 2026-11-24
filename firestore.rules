@@ -56,6 +56,7 @@ service cloud.firestore {
 
       // ─── UPDATE: Phân quyền chặt chẽ theo vai trò ──────────────────────
       // Admin: được update mọi field, mọi phòng (duyệt, từ chối, ẩn, khôi phục)
+      // User đánh giá: được phép cập nhật điểm averageRating và totalReviews khi viết/xóa review
       // User (chủ phòng): chỉ được sửa phòng của mình với các ràng buộc sau:
       //   • Không được đổi 'ownerId' (tránh chuyển nhượng lén)
       //   • Giá trị 'status' mới CHỈ ĐƯỢC LÀ 'pending_approval' hoặc 'hidden'
@@ -64,11 +65,17 @@ service cloud.firestore {
       allow update: if isAdmin()
                     || (
                       isAuthenticated()
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['averageRating', 'totalReviews'])
+                    )
+                    || (
+                      isAuthenticated()
                       && resource.data.ownerId == request.auth.uid
                       // Không cho phép đổi chủ phòng
                       && request.resource.data.ownerId == resource.data.ownerId
                       // Giới hạn các status user được tự gán
                       && request.resource.data.status in ['pending_approval', 'hidden']
+                      // TUYỆT ĐỐI KHÔNG CHO PHÉP user can thiệp các trường gói VIP / xúc tiến trả phí
+                      && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['priority', 'packageType', 'packageStartAt', 'packageExpiresAt', 'vipType']))
                     );
 
       // Xóa phòng: Admin hoặc chính chủ phòng
@@ -227,6 +234,32 @@ service cloud.firestore {
 
       // Chỉ Admin mới được xóa record quota
       allow delete: if isAdmin();
+    }
+
+    // 11. Package Plans (Cấu hình bảng giá gói đăng tin)
+    match /package_plans/{planId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 12. Package Orders (Đơn mua gói đăng tin)
+    // Người dùng chỉ xem được đơn của mình, Admin xem tất cả.
+    // Việc tạo, cập nhật trạng thái (completed/failed) do Cloud Functions (Admin SDK) hoặc Admin quản lý.
+    match /package_orders/{orderId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create, update, delete: if isAdmin();
+    }
+
+    // 13. Payment Transactions (Giao dịch cổng thanh toán MoMo)
+    match /payment_transactions/{transId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create, update, delete: if isAdmin();
+    }
+
+    // 14. Room Promotions (Gói đăng tin đang kích hoạt cho từng phòng)
+    match /room_promotions/{promoId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
     }
   }
 }

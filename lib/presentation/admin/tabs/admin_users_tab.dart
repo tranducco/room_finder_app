@@ -80,11 +80,12 @@ class _AdminUsersTabState extends State<AdminUsersTab> {
   Widget build(BuildContext context) {
     final currentAdmin = FirebaseAuth.instance.currentUser;
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+    final isSmall = MediaQuery.of(context).size.width < 720;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.all(isSmall ? 12 : 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -92,43 +93,54 @@ class _AdminUsersTabState extends State<AdminUsersTab> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Quản lý Người dùng & Trạng thái Tài khoản',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A1A2E),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Quản lý Người dùng & Trạng thái',
+                        style: TextStyle(
+                          fontSize: isSmall ? 18 : 24,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF1A1A2E),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Danh sách thành viên, kiểm tra vai trò và quản lý khóa tài khoản vi phạm',
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                    ),
-                  ],
-                ),
-                ElevatedButton.icon(
-                  onPressed: _loadUsers,
-                  icon: const Icon(Icons.refresh_rounded, size: 16),
-                  label: const Text('Làm mới'),
-                  style: AppButtonStyle.primary(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Danh sách thành viên, kiểm tra vai trò và quản lý khóa tài khoản vi phạm',
+                        style: TextStyle(fontSize: isSmall ? 12 : 13, color: Colors.grey.shade600),
+                        maxLines: isSmall ? 1 : 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
+                const SizedBox(width: 8),
+                isSmall
+                    ? IconButton(
+                        onPressed: _loadUsers,
+                        icon: const Icon(Icons.refresh_rounded, color: Color(0xFF00897B)),
+                        tooltip: 'Làm mới',
+                      )
+                    : ElevatedButton.icon(
+                        onPressed: _loadUsers,
+                        icon: const Icon(Icons.refresh_rounded, size: 16),
+                        label: const Text('Làm mới'),
+                        style: AppButtonStyle.primary(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                      ),
               ],
             ),
 
-            const SizedBox(height: 20),
+            SizedBox(height: isSmall ? 12 : 20),
 
             // Filter & Search bar
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(isSmall ? 10 : 16),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: Colors.grey.shade200),
                 boxShadow: [
                   BoxShadow(
@@ -141,78 +153,146 @@ class _AdminUsersTabState extends State<AdminUsersTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Tìm kiếm người dùng theo Email, Họ tên, SĐT hoặc UID...',
-                      prefixIcon: const Icon(Icons.search, size: 20),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () => _searchController.clear(),
-                            )
-                          : null,
-                      filled: true,
-                      fillColor: const Color(0xFFF9FAFB),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
+                  SizedBox(
+                    height: isSmall ? 40 : 48,
+                    child: TextField(
+                      controller: _searchController,
+                      style: TextStyle(fontSize: isSmall ? 13 : 14),
+                      decoration: InputDecoration(
+                        hintText: isSmall
+                            ? 'Tìm theo Email, tên, SĐT, UID...'
+                            : 'Tìm kiếm người dùng theo Email, Họ tên, SĐT hoặc UID...',
+                        hintStyle: TextStyle(fontSize: isSmall ? 12 : 13),
+                        prefixIcon: Icon(Icons.search, size: isSmall ? 18 : 20),
+                        suffixIcon: _searchController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, size: 16),
+                                onPressed: () => _searchController.clear(),
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: const Color(0xFFF9FAFB),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 10),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      // Role filter
-                      const Text(
-                        'Vai trò: ',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  SizedBox(height: isSmall ? 8 : 12),
+                  if (isSmall) ...[
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          const Text(
+                            'Vai trò: ',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                          _filterChip('all', 'Tất cả (${_allUsers.length})', _selectedRole, (val) {
+                            setState(() => _selectedRole = val);
+                            _applyFilters();
+                          }),
+                          const SizedBox(width: 4),
+                          _filterChip('user', 'Người dùng', _selectedRole, (val) {
+                            setState(() => _selectedRole = val);
+                            _applyFilters();
+                          }),
+                          const SizedBox(width: 4),
+                          _filterChip('admin', 'Quản trị viên', _selectedRole, (val) {
+                            setState(() => _selectedRole = val);
+                            _applyFilters();
+                          }, color: const Color(0xFF00897B)),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      _filterChip('all', 'Tất cả (${_allUsers.length})', _selectedRole, (val) {
-                        setState(() => _selectedRole = val);
-                        _applyFilters();
-                      }),
-                      const SizedBox(width: 8),
-                      _filterChip('user', 'Người dùng', _selectedRole, (val) {
-                        setState(() => _selectedRole = val);
-                        _applyFilters();
-                      }),
-                      const SizedBox(width: 8),
-                      _filterChip('admin', 'Quản trị viên', _selectedRole, (val) {
-                        setState(() => _selectedRole = val);
-                        _applyFilters();
-                      }, color: const Color(0xFF00897B)),
-
-                      const SizedBox(width: 24),
-                      // Status filter
-                      const Text(
-                        'Trạng thái: ',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 6),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          const Text(
+                            'Trạng thái: ',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                          _filterChip('all', 'Tất cả', _selectedStatus, (val) {
+                            setState(() => _selectedStatus = val);
+                            _applyFilters();
+                          }),
+                          const SizedBox(width: 4),
+                          _filterChip('active', 'Hoạt động', _selectedStatus, (val) {
+                            setState(() => _selectedStatus = val);
+                            _applyFilters();
+                          }, color: Colors.green.shade700),
+                          const SizedBox(width: 4),
+                          _filterChip('blocked', 'Bị khóa', _selectedStatus, (val) {
+                            setState(() => _selectedStatus = val);
+                            _applyFilters();
+                          }, color: Colors.red.shade700),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      _filterChip('all', 'Tất cả', _selectedStatus, (val) {
-                        setState(() => _selectedStatus = val);
-                        _applyFilters();
-                      }),
-                      const SizedBox(width: 8),
-                      _filterChip('active', 'Hoạt động', _selectedStatus, (val) {
-                        setState(() => _selectedStatus = val);
-                        _applyFilters();
-                      }, color: Colors.green.shade700),
-                      const SizedBox(width: 8),
-                      _filterChip('blocked', 'Bị khóa', _selectedStatus, (val) {
-                        setState(() => _selectedStatus = val);
-                        _applyFilters();
-                      }, color: Colors.red.shade700),
-                    ],
-                  ),
+                    ),
+                  ] else ...[
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 10,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            const Text(
+                              'Vai trò: ',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                            ),
+                            _filterChip('all', 'Tất cả (${_allUsers.length})', _selectedRole, (val) {
+                              setState(() => _selectedRole = val);
+                              _applyFilters();
+                            }),
+                            _filterChip('user', 'Người dùng', _selectedRole, (val) {
+                              setState(() => _selectedRole = val);
+                              _applyFilters();
+                            }),
+                            _filterChip('admin', 'Quản trị viên', _selectedRole, (val) {
+                              setState(() => _selectedRole = val);
+                              _applyFilters();
+                            }, color: const Color(0xFF00897B)),
+                          ],
+                        ),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            const Text(
+                              'Trạng thái: ',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                            ),
+                            _filterChip('all', 'Tất cả', _selectedStatus, (val) {
+                              setState(() => _selectedStatus = val);
+                              _applyFilters();
+                            }),
+                            _filterChip('active', 'Hoạt động', _selectedStatus, (val) {
+                              setState(() => _selectedStatus = val);
+                              _applyFilters();
+                            }, color: Colors.green.shade700),
+                            _filterChip('blocked', 'Bị khóa', _selectedStatus, (val) {
+                              setState(() => _selectedStatus = val);
+                              _applyFilters();
+                            }, color: Colors.red.shade700),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
 
-            const SizedBox(height: 20),
+            SizedBox(height: isSmall ? 12 : 20),
 
             // Users Table
             if (_isLoading)
@@ -268,6 +348,277 @@ class _AdminUsersTabState extends State<AdminUsersTab> {
                   itemBuilder: (ctx, index) {
                     final user = _filteredUsers[index];
                     final isCurrentAdmin = user.uid == currentAdmin?.uid;
+
+                    if (isSmall) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Avatar
+                                Container(
+                                  width: 42,
+                                  height: 42,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: user.isAdmin ? const Color(0xFF00897B) : Colors.grey.shade200,
+                                  ),
+                                  child: ClipOval(
+                                    child: user.avatarUrl.isNotEmpty
+                                        ? AppImage(
+                                            imageUrl: user.avatarUrl,
+                                            width: 42,
+                                            height: 42,
+                                            fit: BoxFit.cover,
+                                            errorWidget: Center(
+                                              child: Text(
+                                                (user.fullName.isNotEmpty
+                                                        ? user.fullName[0]
+                                                        : user.email.isNotEmpty
+                                                            ? user.email[0]
+                                                            : 'U')
+                                                    .toUpperCase(),
+                                                style: TextStyle(
+                                                  color: user.isAdmin ? Colors.white : const Color(0xFF1A1A2E),
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 14,
+                                                ),
+                                              ),
+                                            ),
+                                          )
+                                        : Center(
+                                            child: Text(
+                                              (user.fullName.isNotEmpty
+                                                      ? user.fullName[0]
+                                                      : user.email.isNotEmpty
+                                                          ? user.email[0]
+                                                          : 'U')
+                                                  .toUpperCase(),
+                                              style: TextStyle(
+                                                color: user.isAdmin ? Colors.white : const Color(0xFF1A1A2E),
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                          ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              user.fullName.isNotEmpty
+                                                  ? user.fullName
+                                                  : (user.email.isNotEmpty
+                                                      ? user.email.split('@').first
+                                                      : 'Người dùng'),
+                                              style: const TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.bold,
+                                                color: Color(0xFF1A1A2E),
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          if (isCurrentAdmin) ...[
+                                            const SizedBox(width: 6),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.blue.shade50,
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                'Bạn',
+                                                style: TextStyle(
+                                                  color: Colors.blue.shade800,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        user.email.isNotEmpty ? user.email : 'Chưa có email',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: user.email.isNotEmpty
+                                              ? Colors.grey.shade600
+                                              : Colors.amber.shade900,
+                                          fontStyle: user.email.isEmpty ? FontStyle.italic : FontStyle.normal,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      if (user.phoneNumber.isNotEmpty) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          'SĐT: ${user.phoneNumber}',
+                                          style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            // Badges & Date & UID row
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 6,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                // Role Badge
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: user.isAdmin
+                                        ? const Color(0xFF00897B).withAlpha(20)
+                                        : Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: user.isAdmin
+                                          ? const Color(0xFF00897B).withAlpha(50)
+                                          : Colors.grey.shade300,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    user.isAdmin ? 'Admin' : 'User',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: user.isAdmin ? const Color(0xFF00897B) : Colors.grey.shade700,
+                                    ),
+                                  ),
+                                ),
+                                // Status Badge
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: user.isBlocked ? Colors.red.shade50 : Colors.green.shade50,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    user.isBlocked ? 'Bị khóa' : 'Hoạt động',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: user.isBlocked ? Colors.red.shade700 : Colors.green.shade700,
+                                    ),
+                                  ),
+                                ),
+                                // Date
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.calendar_today_rounded, size: 11, color: Colors.grey.shade400),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      user.createdAt != null
+                                          ? dateFormat.format(user.createdAt!)
+                                          : (user.updatedAt != null
+                                              ? dateFormat.format(user.updatedAt!)
+                                              : 'Chưa có ngày'),
+                                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                    ),
+                                  ],
+                                ),
+                                // UID Chip
+                                InkWell(
+                                  onTap: () {
+                                    Clipboard.setData(ClipboardData(text: user.uid));
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('📋 Đã sao chép UID: ${user.uid}'),
+                                        duration: const Duration(seconds: 1),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  },
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.fingerprint_rounded, size: 11, color: Colors.grey.shade500),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        'UID: ${user.uid.length > 8 ? "${user.uid.substring(0, 6)}..." : user.uid}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontFamily: 'monospace',
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 3),
+                                      Icon(Icons.copy_rounded, size: 10, color: Colors.grey.shade500),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            // Action buttons row (aligned right)
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.send_rounded, size: 18, color: Color(0xFF00897B)),
+                                  tooltip: 'Gửi thông báo',
+                                  constraints: const BoxConstraints(),
+                                  padding: const EdgeInsets.all(8),
+                                  onPressed: () => _openSendNotificationDialog(user),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: const Icon(Icons.holiday_village_outlined, size: 18),
+                                  tooltip: 'Xem phòng đăng',
+                                  constraints: const BoxConstraints(),
+                                  padding: const EdgeInsets.all(8),
+                                  onPressed: () => _viewUserRooms(user),
+                                ),
+                                if (!isCurrentAdmin) ...[
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    icon: Icon(
+                                      user.isAdmin ? Icons.admin_panel_settings_rounded : Icons.admin_panel_settings_outlined,
+                                      size: 18,
+                                      color: user.isAdmin ? const Color(0xFF00897B) : Colors.grey.shade600,
+                                    ),
+                                    tooltip: user.isAdmin ? 'Hạ quyền' : 'Thăng quyền',
+                                    constraints: const BoxConstraints(),
+                                    padding: const EdgeInsets.all(8),
+                                    onPressed: () => _toggleRole(user),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    icon: Icon(
+                                      user.isBlocked ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
+                                      size: 18,
+                                      color: user.isBlocked ? Colors.green.shade700 : Colors.red.shade600,
+                                    ),
+                                    tooltip: user.isBlocked ? 'Mở khóa' : 'Khóa tài khoản',
+                                    constraints: const BoxConstraints(),
+                                    padding: const EdgeInsets.all(8),
+                                    onPressed: () => _toggleBlock(user),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    }
 
                     return Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -599,6 +950,9 @@ class _AdminUsersTabState extends State<AdminUsersTab> {
     return ChoiceChip(
       label: Text(label),
       selected: isSelected,
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       onSelected: (selected) {
         if (selected) onSelected(key);
       },

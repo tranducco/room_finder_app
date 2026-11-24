@@ -211,7 +211,9 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
                             children: List.generate(5, (index) {
                               final starNum = index + 1;
                               return IconButton(
-                                iconSize: 36,
+                                iconSize: 32,
+                                padding: const EdgeInsets.symmetric(horizontal: 2),
+                                constraints: const BoxConstraints(),
                                 onPressed: () {
                                   setModalState(() => selectedRating = starNum.toDouble());
                                 },
@@ -498,15 +500,19 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
               children: [
                 Icon(statusIcon, color: statusColor, size: 18),
                 const SizedBox(width: 8),
-                Text(
-                  statusLabel,
-                  style: TextStyle(
-                    color: statusColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
+                Expanded(
+                  child: Text(
+                    statusLabel,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 8),
                 if (appointmentDate != null)
                   Text(
                     DateFormat('dd/MM/yyyy HH:mm').format(appointmentDate),
@@ -623,7 +629,7 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
                           child: OutlinedButton.icon(
                             onPressed: () => _updateStatus(bookingId, 'cancelled'),
                             icon: const Icon(Icons.close_rounded, size: 16),
-                            label: const Text('Hủy lịch'),
+                            label: const Text('Hủy lịch', maxLines: 1, overflow: TextOverflow.ellipsis),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: Colors.red,
                               side: const BorderSide(color: Colors.red),
@@ -642,7 +648,7 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
                           child: ElevatedButton.icon(
                             onPressed: () => _updateStatus(bookingId, 'completed'),
                             icon: const Icon(Icons.check_circle_outline_rounded, size: 16),
-                            label: const Text('Đã xem phòng'),
+                            label: const Text('Đã xem phòng', maxLines: 1, overflow: TextOverflow.ellipsis),
                             style: AppButtonStyle.primary(
                               borderRadius: 8,
                               hoverElevation: 3,
@@ -659,6 +665,8 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
                             label: const Text(
                               'Đánh giá phòng ngay',
                               style: TextStyle(fontWeight: FontWeight.bold),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                             style: AppButtonStyle.primary(
                               borderRadius: 8,
@@ -680,7 +688,7 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
                           child: OutlinedButton.icon(
                             onPressed: () => _updateStatus(bookingId, 'cancelled'),
                             icon: const Icon(Icons.close_rounded, size: 16),
-                            label: const Text('Từ chối'),
+                            label: const Text('Từ chối', maxLines: 1, overflow: TextOverflow.ellipsis),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: Colors.red,
                               side: const BorderSide(color: Colors.red),
@@ -695,7 +703,7 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
                           child: ElevatedButton.icon(
                             onPressed: () => _updateStatus(bookingId, 'confirmed'),
                             icon: const Icon(Icons.check_rounded, size: 16),
-                            label: const Text('Xác nhận lịch'),
+                            label: const Text('Xác nhận lịch', maxLines: 1, overflow: TextOverflow.ellipsis),
                             style: AppButtonStyle.primary(
                               borderRadius: 8,
                               hoverElevation: 3,
@@ -712,7 +720,13 @@ class _MyBookingsScreenState extends State<MyBookingsScreen>
                       child: OutlinedButton.icon(
                         onPressed: () => _updateStatus(bookingId, 'completed'),
                         icon: const Icon(Icons.verified_outlined, size: 16),
-                        label: const Text('Đánh dấu đã tiếp khách xong (Hoàn thành)'),
+                        label: Text(
+                          MediaQuery.of(context).size.width < 400
+                              ? 'Đã tiếp khách xong'
+                              : 'Đánh dấu đã tiếp khách xong (Hoàn thành)',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: const Color(0xFF00897B),
                           side: const BorderSide(color: Color(0xFF00897B)),

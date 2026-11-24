@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../domain/models/room.dart';
@@ -11,17 +12,23 @@ import '../widgets/room_card.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/app_button_style.dart';
 import 'widgets/ai_chat_sheet.dart';
+import 'widgets/home_banner_carousel.dart';
 
 class HomeTab extends StatefulWidget {
-  const HomeTab({super.key});
+  final TextEditingController? searchController;
+
+  const HomeTab({
+    super.key,
+    this.searchController,
+  });
 
   @override
-  State<HomeTab> createState() => _HomeTabState();
+  State<HomeTab> createState() => HomeTabState();
 }
 
-class _HomeTabState extends State<HomeTab> {
+class HomeTabState extends State<HomeTab> {
   final RoomService _roomService = RoomService();
-  final TextEditingController _searchController = TextEditingController();
+  late final TextEditingController _searchController;
 
   List<Room> _allRooms = [];
   List<Room> _filteredRooms = [];
@@ -74,6 +81,7 @@ class _HomeTabState extends State<HomeTab> {
   @override
   void initState() {
     super.initState();
+    _searchController = widget.searchController ?? TextEditingController();
     _loadData();
     _searchController.addListener(_applyFilters);
   }
@@ -81,8 +89,30 @@ class _HomeTabState extends State<HomeTab> {
   @override
   void dispose() {
     _notifSubscription?.cancel();
-    _searchController.dispose();
+    if (widget.searchController == null) {
+      _searchController.dispose();
+    }
     super.dispose();
+  }
+
+  void loadData() => _loadData();
+  void openFilterSheet() => _openFilterSheet();
+  int get activeFilterCount => _activeFilterCount;
+
+  Future<void> seedData() async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Đang nạp dữ liệu mẫu (210 phòng)...')),
+    );
+    await _roomService.seedMockData();
+    if (!mounted) return;
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('Dữ liệu mẫu đã lên Firestore thành công!'),
+        backgroundColor: Color(0xFF00897B),
+      ),
+    );
+    _loadData();
   }
 
   Future<void> _loadData() async {
@@ -183,7 +213,18 @@ class _HomeTabState extends State<HomeTab> {
             matchType &&
             matchAmenities &&
             matchStatus;
-      }).toList();
+      }).toList()
+        ..sort((a, b) {
+          // 1. ƯU TIÊN THEO HẠNG GÓI VIP (Vàng: 3 > Bạc: 2 > Đồng: 1 > Thường: 0)
+          // Tự động kiểm tra thời hạn: nếu hết hạn thì effectivePriority = 0
+          final priorityCompare = b.effectivePriority.compareTo(a.effectivePriority);
+          if (priorityCompare != 0) return priorityCompare;
+
+          // 2. Trong cùng một hạng: Tin kích hoạt gói mới hơn hoặc đăng gần nhất xếp trước
+          final timeA = a.packageStartAt ?? a.createdAt ?? DateTime(2000);
+          final timeB = b.packageStartAt ?? b.createdAt ?? DateTime(2000);
+          return timeB.compareTo(timeA);
+        });
     });
   }
 
@@ -236,273 +277,278 @@ class _HomeTabState extends State<HomeTab> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth >= 850;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       body: CustomScrollView(
-        clipBehavior: Clip.none,
+        clipBehavior: Clip.hardEdge,
         slivers: [
-          // ======= HEADER BANNER =======
-          SliverToBoxAdapter(
-            child: Container(
-              clipBehavior: Clip.antiAlias,
-              decoration: const BoxDecoration(
-                color: Color(0xFF00695C),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(28),
-                  bottomRight: Radius.circular(28),
-                ),
-              ),
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: Image.asset(
-                      'assets/images/header_bg.png',
-                      fit: BoxFit.cover,
-                      alignment: Alignment.centerRight,
-                      errorBuilder: (_, _, _) => Image.network(
-                        'header_bg.png',
-                        fit: BoxFit.cover,
-                        alignment: Alignment.centerRight,
-                        errorBuilder: (_, _, _) => const SizedBox(),
-                      ),
+          // ======= MOBILE HEADER BANNER (Ghim cố định nổi trên cùng không che khuất) =======
+          if (!isDesktop)
+            SliverAppBar(
+              floating: false,
+              snap: false,
+              pinned: true,
+              automaticallyImplyLeading: false,
+              titleSpacing: 0,
+              elevation: 4,
+              backgroundColor: const Color(0xFF00695C),
+              systemOverlayStyle: SystemUiOverlayStyle.light,
+              toolbarHeight: 196,
+              flexibleSpace: FlexibleSpaceBar(
+                collapseMode: CollapseMode.pin,
+                background: Container(
+                  clipBehavior: Clip.antiAlias,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF00695C),
+                    borderRadius: BorderRadius.only(
+                      bottomLeft: Radius.circular(22),
+                      bottomRight: Radius.circular(22),
                     ),
                   ),
-                  SafeArea(
-                    bottom: false,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                      // Top row: Logo + Branding + Actions
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: Image.asset(
+                          'assets/images/header_bg.png',
+                          fit: BoxFit.cover,
+                          alignment: Alignment.centerRight,
+                          errorBuilder: (_, _, _) => Image.network(
+                            'header_bg.png',
+                            fit: BoxFit.cover,
+                            alignment: Alignment.centerRight,
+                            errorBuilder: (_, _, _) => const SizedBox(),
+                          ),
+                        ),
+                      ),
+                      SafeArea(
+                        bottom: false,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Container(
-                                width: 44,
-                                height: 44,
-                                padding: const EdgeInsets.all(5),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withAlpha(30),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: const AppLogo(size: 34),
-                              ),
-                              const SizedBox(width: 12),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                              // Top row: Logo + Branding + Actions (Mobile)
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text(
-                                    'Trọ Tốt',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 0.5,
+                                  Expanded(
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 38,
+                                          height: 38,
+                                          padding: const EdgeInsets.all(4),
+                                          clipBehavior: Clip.antiAlias,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            shape: BoxShape.circle,
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black.withAlpha(30),
+                                                blurRadius: 8,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ],
+                                          ),
+                                          child: const AppLogo(size: 28),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              const Text(
+                                                'Trọ Tốt',
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 19,
+                                                  fontWeight: FontWeight.w800,
+                                                  letterSpacing: 0.5,
+                                                ),
+                                              ),
+                                              Text(
+                                                'Tìm phòng nhanh & an toàn',
+                                                style: TextStyle(
+                                                  color: Colors.white.withAlpha(210),
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w400,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                  Text(
-                                    'Tìm phòng nhanh & an toàn',
-                                    style: TextStyle(
-                                      color: Colors.white.withAlpha(210),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w400,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          Row(
-                            children: [
-                              // Chuông thông báo
-                              _notificationBell(),
-                              const SizedBox(width: 8),
-                              _headerIconBtn(
-                                icon: Icons.cloud_upload_outlined,
-                                tooltip: 'Đẩy dữ liệu mẫu',
-                                onTap: () async {
-                                  final messenger = ScaffoldMessenger.of(
-                                    context,
-                                  );
-                                  messenger.showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Đang đẩy dữ liệu mẫu...'),
-                                    ),
-                                  );
-                                  await _roomService.seedMockData();
-                                  if (!mounted) return;
-                                  messenger.showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Dữ liệu mẫu đã lên Firestore!',
+                                  const SizedBox(width: 6),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _notificationBell(),
+                                      const SizedBox(width: 6),
+                                      _headerIconBtn(
+                                        icon: Icons.cloud_upload_outlined,
+                                        tooltip: 'Đẩy dữ liệu mẫu',
+                                        onTap: seedData,
                                       ),
-                                      backgroundColor: Color(0xFF00897B),
-                                    ),
-                                  );
-                                  _loadData();
-                                },
-                              ),
-                              const SizedBox(width: 8),
-                              _headerIconBtn(
-                                icon: Icons.refresh_rounded,
-                                tooltip: 'Làm mới',
-                                onTap: _loadData,
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-
-                      // Stats row
-                      Row(
-                        children: [
-                          _statChip(
-                            Icons.home_work_rounded,
-                            '${_allRooms.length} phòng',
-                          ),
-                          const SizedBox(width: 10),
-                          _statChip(Icons.location_on_rounded, 'Hà Nội'),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-
-                      // Search bar + Filter button
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(14),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withAlpha(20),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
+                                      const SizedBox(width: 6),
+                                      _headerIconBtn(
+                                        icon: Icons.refresh_rounded,
+                                        tooltip: 'Làm mới',
+                                        onTap: loadData,
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
-                              child: TextField(
-                                controller: _searchController,
-                                decoration: InputDecoration(
-                                  hintText: 'Tìm theo khu vực, tên đường...',
-                                  hintStyle: TextStyle(
-                                    color: Colors.grey.shade400,
-                                    fontSize: 14,
-                                  ),
-                                  prefixIcon: Icon(
-                                    Icons.search_rounded,
-                                    color: Colors.grey.shade500,
-                                  ),
-                                  suffixIcon: _searchController.text.isNotEmpty
-                                      ? IconButton(
-                                          icon: const Icon(
-                                            Icons.clear,
+                              const SizedBox(height: 10),
+
+                              // Location badge (Mobile)
+                              _statChip(Icons.location_on_rounded, 'Hà Nội'),
+
+                              const SizedBox(height: 10),
+
+                              // Search bar + Filter button (Mobile)
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Container(
+                                      height: 44,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(12),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withAlpha(20),
+                                            blurRadius: 10,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: TextField(
+                                        controller: _searchController,
+                                        decoration: InputDecoration(
+                                          hintText: 'Tìm theo khu vực, tên đường...',
+                                          hintStyle: TextStyle(
+                                            color: Colors.grey.shade400,
+                                            fontSize: 13.5,
+                                          ),
+                                          prefixIcon: Icon(
+                                            Icons.search_rounded,
+                                            color: Colors.grey.shade500,
                                             size: 20,
                                           ),
-                                          onPressed: () =>
-                                              _searchController.clear(),
-                                          color: Colors.grey,
-                                        )
-                                      : null,
-                                  border: InputBorder.none,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    vertical: 14,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          HoverWidget(
-                            onTap: _openFilterSheet,
-                            builder: (context, isHovered) => AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              height: 48,
-                              width: 48,
-                              transform: Matrix4.translationValues(0, isHovered ? -2 : 0, 0),
-                              decoration: BoxDecoration(
-                                color: isHovered
-                                    ? const Color(0xFFE0F2F1)
-                                    : Colors.white,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: isHovered
-                                      ? const Color(0xFF00897B)
-                                      : Colors.transparent,
-                                  width: 1.2,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: isHovered
-                                        ? const Color(0xFF00897B).withAlpha(40)
-                                        : Colors.black.withAlpha(20),
-                                    blurRadius: isHovered ? 12 : 10,
-                                    offset: Offset(0, isHovered ? 6 : 4),
-                                  ),
-                                ],
-                              ),
-                              child: Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.tune_rounded,
-                                    color: _activeFilterCount > 0 || isHovered
-                                        ? const Color(0xFF00897B)
-                                        : const Color(0xFF1A1A2E),
-                                    size: 22,
-                                  ),
-                                  if (_activeFilterCount > 0)
-                                    Positioned(
-                                      top: 6,
-                                      right: 6,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(4),
-                                        decoration: const BoxDecoration(
-                                          color: Colors.redAccent,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        constraints: const BoxConstraints(
-                                          minWidth: 16,
-                                          minHeight: 16,
-                                        ),
-                                        child: Text(
-                                          '$_activeFilterCount',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                          textAlign: TextAlign.center,
+                                          suffixIcon: _searchController.text.isNotEmpty
+                                              ? IconButton(
+                                                  icon: const Icon(Icons.clear, size: 18),
+                                                  onPressed: () => _searchController.clear(),
+                                                  color: Colors.grey,
+                                                )
+                                              : null,
+                                          border: InputBorder.none,
+                                          contentPadding: const EdgeInsets.symmetric(vertical: 12),
                                         ),
                                       ),
                                     ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  HoverWidget(
+                                    onTap: _openFilterSheet,
+                                    builder: (context, isHovered) => AnimatedContainer(
+                                      duration: const Duration(milliseconds: 200),
+                                      height: 44,
+                                      width: 44,
+                                      transform: Matrix4.translationValues(0, isHovered ? -2 : 0, 0),
+                                      decoration: BoxDecoration(
+                                        color: isHovered ? const Color(0xFFE0F2F1) : Colors.white,
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: isHovered ? const Color(0xFF00897B) : Colors.transparent,
+                                          width: 1.2,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: isHovered
+                                                ? const Color(0xFF00897B).withAlpha(40)
+                                                : Colors.black.withAlpha(20),
+                                            blurRadius: isHovered ? 12 : 10,
+                                            offset: Offset(0, isHovered ? 6 : 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Stack(
+                                        alignment: Alignment.center,
+                                        children: [
+                                          Icon(
+                                            Icons.tune_rounded,
+                                            color: _activeFilterCount > 0 || isHovered
+                                                ? const Color(0xFF00897B)
+                                                : const Color(0xFF1A1A2E),
+                                            size: 20,
+                                          ),
+                                          if (_activeFilterCount > 0)
+                                            Positioned(
+                                              top: 4,
+                                              right: 4,
+                                              child: Container(
+                                                padding: const EdgeInsets.all(3),
+                                                decoration: const BoxDecoration(
+                                                  color: Colors.redAccent,
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                constraints: const BoxConstraints(
+                                                  minWidth: 16,
+                                                  minHeight: 16,
+                                                ),
+                                                child: Text(
+                                                  '$_activeFilterCount',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 9,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                  textAlign: TextAlign.center,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                 ],
                               ),
-                            ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
-            ],
+            ),
+
+          // ======= HERO AUTO BANNER CAROUSEL =======
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, isDesktop ? 16 : 12, 16, 0),
+              child: HomeBannerCarousel(
+                onExploreRooms: () => _resetAllFilters(),
+                onViewLatest: () => _resetAllFilters(),
+                onOpenChatbot: () => AiChatSheet.show(context),
+                onSearchNearby: () {
+                  setState(() => _selectedDistrict = 'Cầu Giấy');
+                  _applyFilters();
+                },
+                onCreateRoom: () => Navigator.pushNamed(context, '/create-room'),
+              ),
+            ),
           ),
-        ),
-      ),
 
           // ======= DISTRICT FILTER =======
           SliverToBoxAdapter(
@@ -651,17 +697,22 @@ class _HomeTabState extends State<HomeTab> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Phòng phù hợp (${_filteredRooms.length})',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A1A2E),
+                  const Expanded(
+                    child: Text(
+                      'Phòng phù hợp',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1A1A2E),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   if (_selectedDistrict != 'Tất cả' ||
                       _searchController.text.isNotEmpty ||
-                      _activeFilterCount > 0)
+                      _activeFilterCount > 0) ...[
+                    const SizedBox(width: 8),
                     GestureDetector(
                       onTap: _resetAllFilters,
                       child: const Text(
@@ -673,6 +724,7 @@ class _HomeTabState extends State<HomeTab> {
                         ),
                       ),
                     ),
+                  ],
                 ],
               ),
             ),
@@ -736,11 +788,13 @@ class _HomeTabState extends State<HomeTab> {
                   )
                 : SliverGrid(
                     gridDelegate:
-                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                        SliverGridDelegateWithMaxCrossAxisExtent(
                           maxCrossAxisExtent: 240.0,
                           mainAxisSpacing: 14.0,
                           crossAxisSpacing: 14.0,
-                          childAspectRatio: 0.7,
+                          childAspectRatio: MediaQuery.of(context).size.width < 420
+                              ? 0.60
+                              : (MediaQuery.of(context).size.width < 600 ? 0.64 : 0.72),
                         ),
                     delegate: SliverChildBuilderDelegate((context, index) {
                       final room = _paginatedRooms[index];
@@ -794,12 +848,50 @@ class _HomeTabState extends State<HomeTab> {
           const SliverToBoxAdapter(child: SizedBox(height: 80)),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        tooltip: 'Trợ lý ảo TroTot AI',
-        onPressed: () => AiChatSheet.show(context),
-        backgroundColor: const Color(0xFF00897B),
-        elevation: 4,
-        child: const Icon(Icons.smart_toy_rounded, color: Colors.white),
+      floatingActionButton: Container(
+        width: 58,
+        height: 58,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF00897B).withAlpha(70),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: FloatingActionButton(
+          tooltip: 'Trợ lý ảo TroTot AI',
+          onPressed: () => AiChatSheet.show(context),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          highlightElevation: 2,
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: Container(
+            width: 58,
+            height: 58,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white,
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: ClipOval(
+              child: Image.asset(
+                'assets/images/ai_bot.png',
+                width: 58,
+                height: 58,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => const Icon(
+                  Icons.smart_toy_rounded,
+                  color: Color(0xFF00897B),
+                  size: 28,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -814,7 +906,7 @@ class _HomeTabState extends State<HomeTab> {
             context: context,
             isScrollControlled: true,
             backgroundColor: Colors.transparent,
-            builder: (ctx) => _NotificationSheet(
+            builder: (ctx) => NotificationSheet(
               onNavigateToBookings: () {
                 Navigator.pop(ctx);
                 Navigator.pushNamed(context, '/my-bookings');
@@ -826,55 +918,59 @@ class _HomeTabState extends State<HomeTab> {
             ),
           );
         },
-        builder: (context, isHovered) => AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          width: 40,
-          height: 40,
-          transform: Matrix4.translationValues(0, isHovered ? -2 : 0, 0),
-          decoration: BoxDecoration(
-            color: isHovered
-                ? Colors.white.withAlpha(55)
-                : Colors.white.withAlpha(25),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: isHovered ? Colors.white : Colors.white.withAlpha(70),
-              width: isHovered ? 1.5 : 1.0,
+        builder: (context, isHovered) {
+          final isDesk = MediaQuery.of(context).size.width >= 1024;
+          final btnSize = isDesk ? 40.0 : 36.0;
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: btnSize,
+            height: btnSize,
+            transform: Matrix4.translationValues(0, isHovered ? -2 : 0, 0),
+            decoration: BoxDecoration(
+              color: isHovered
+                  ? Colors.white.withAlpha(55)
+                  : Colors.white.withAlpha(25),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isHovered ? Colors.white : Colors.white.withAlpha(70),
+                width: isHovered ? 1.5 : 1.0,
+              ),
+              boxShadow: isHovered
+                  ? [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(25),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ]
+                  : [],
             ),
-            boxShadow: isHovered
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(25),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ]
-                : [],
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              const Icon(Icons.notifications_outlined, color: Colors.white, size: 20),
-              if (_notificationCount > 0)
-                Positioned(
-                  top: 6,
-                  right: 6,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: const BoxDecoration(
-                      color: Colors.redAccent,
-                      shape: BoxShape.circle,
-                    ),
-                    constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
-                    child: Text(
-                      '$_notificationCount',
-                      style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.center,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(Icons.notifications_outlined, color: Colors.white, size: isDesk ? 20 : 18),
+                if (_notificationCount > 0)
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(
+                        color: Colors.redAccent,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
+                      child: Text(
+                        '$_notificationCount',
+                        style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
                     ),
                   ),
-                ),
-            ],
-          ),
-        ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -888,32 +984,36 @@ class _HomeTabState extends State<HomeTab> {
       message: tooltip,
       child: HoverWidget(
         onTap: onTap,
-        builder: (context, isHovered) => AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          width: 40,
-          height: 40,
-          transform: Matrix4.translationValues(0, isHovered ? -2 : 0, 0),
-          decoration: BoxDecoration(
-            color: isHovered
-                ? Colors.white.withAlpha(55)
-                : Colors.white.withAlpha(25),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: isHovered ? Colors.white : Colors.white.withAlpha(70),
-              width: isHovered ? 1.5 : 1.0,
+        builder: (context, isHovered) {
+          final isDesk = MediaQuery.of(context).size.width >= 1024;
+          final btnSize = isDesk ? 40.0 : 36.0;
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: btnSize,
+            height: btnSize,
+            transform: Matrix4.translationValues(0, isHovered ? -2 : 0, 0),
+            decoration: BoxDecoration(
+              color: isHovered
+                  ? Colors.white.withAlpha(55)
+                  : Colors.white.withAlpha(25),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isHovered ? Colors.white : Colors.white.withAlpha(70),
+                width: isHovered ? 1.5 : 1.0,
+              ),
+              boxShadow: isHovered
+                  ? [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(25),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ]
+                  : [],
             ),
-            boxShadow: isHovered
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(25),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ]
-                : [],
-          ),
-          child: Icon(icon, color: Colors.white, size: 20),
-        ),
+            child: Icon(icon, color: Colors.white, size: isDesk ? 20 : 18),
+          );
+        },
       ),
     );
   }
@@ -979,20 +1079,21 @@ class _HomeTabState extends State<HomeTab> {
 // ======================================================
 // NOTIFICATION SHEET WIDGET
 // ======================================================
-class _NotificationSheet extends StatefulWidget {
+class NotificationSheet extends StatefulWidget {
   final VoidCallback onNavigateToBookings;
   final VoidCallback onNavigateToLogin;
 
-  const _NotificationSheet({
+  const NotificationSheet({
+    super.key,
     required this.onNavigateToBookings,
     required this.onNavigateToLogin,
   });
 
   @override
-  State<_NotificationSheet> createState() => _NotificationSheetState();
+  State<NotificationSheet> createState() => _NotificationSheetState();
 }
 
-class _NotificationSheetState extends State<_NotificationSheet>
+class _NotificationSheetState extends State<NotificationSheet>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final user = FirebaseAuth.instance.currentUser;
@@ -1458,47 +1559,50 @@ class _PaginationBar extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Nút trang trước
-          _PageBtn(
-            label: null,
-            icon: Icons.chevron_left_rounded,
-            isEnabled: currentPage > 0,
-            isSelected: false,
-            onTap: currentPage > 0 ? () => onPageChanged(currentPage - 1) : null,
-          ),
-          const SizedBox(width: 4),
-          // Các số trang
-          ...pages.map((p) {
-            if (p == null) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 4),
-                child: Text('...', style: TextStyle(color: Colors.grey, fontSize: 14, fontWeight: FontWeight.bold)),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Nút trang trước
+            _PageBtn(
+              label: null,
+              icon: Icons.chevron_left_rounded,
+              isEnabled: currentPage > 0,
+              isSelected: false,
+              onTap: currentPage > 0 ? () => onPageChanged(currentPage - 1) : null,
+            ),
+            const SizedBox(width: 4),
+            // Các số trang
+            ...pages.map((p) {
+              if (p == null) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4),
+                  child: Text('...', style: TextStyle(color: Colors.grey, fontSize: 14, fontWeight: FontWeight.bold)),
+                );
+              }
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: _PageBtn(
+                  label: '${p + 1}',
+                  icon: null,
+                  isEnabled: true,
+                  isSelected: p == currentPage,
+                  onTap: () => onPageChanged(p),
+                ),
               );
-            }
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 3),
-              child: _PageBtn(
-                label: '${p + 1}',
-                icon: null,
-                isEnabled: true,
-                isSelected: p == currentPage,
-                onTap: () => onPageChanged(p),
-              ),
-            );
-          }),
-          const SizedBox(width: 4),
-          // Nút trang sau
-          _PageBtn(
-            label: null,
-            icon: Icons.chevron_right_rounded,
-            isEnabled: currentPage < totalPages - 1,
-            isSelected: false,
-            onTap: currentPage < totalPages - 1 ? () => onPageChanged(currentPage + 1) : null,
-          ),
-        ],
+            }),
+            const SizedBox(width: 4),
+            // Nút trang sau
+            _PageBtn(
+              label: null,
+              icon: Icons.chevron_right_rounded,
+              isEnabled: currentPage < totalPages - 1,
+              isSelected: false,
+              onTap: currentPage < totalPages - 1 ? () => onPageChanged(currentPage + 1) : null,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1616,22 +1720,30 @@ class _AppFooter extends StatelessWidget {
               runSpacing: 28,
               children: [
                 // Cột 1: App info
-                SizedBox(
-                  width: 200,
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 320),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
                           Container(
-                            width: 40,
-                            height: 40,
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF00897B),
-                              borderRadius: BorderRadius.circular(10),
+                            width: 38,
+                            height: 38,
+                            padding: const EdgeInsets.all(4),
+                            clipBehavior: Clip.antiAlias,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black12,
+                                  blurRadius: 6,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
                             ),
-                            child: const Icon(Icons.home_work_rounded, color: Colors.white, size: 22),
+                            child: const AppLogo(size: 30),
                           ),
                           const SizedBox(width: 10),
                           const Text(
@@ -1651,14 +1763,15 @@ class _AppFooter extends StatelessWidget {
                       ),
                       const SizedBox(height: 14),
                       // App store badges
-                      Row(
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
                         children: [
                           _StoreBadge(
                             icon: Icons.apple,
                             label: 'App Store',
                             sublabel: 'Download on the',
                           ),
-                          const SizedBox(width: 8),
                           _StoreBadge(
                             icon: Icons.android,
                             label: 'Google Play',
@@ -1726,7 +1839,7 @@ class _AppFooter extends StatelessWidget {
                       const SizedBox(height: 6),
                       _FooterInfoRow(
                         Icons.location_on_outlined,
-                        'Tầng 5, Tòa nhà ABC,\nSố 1 Đại Cồ Việt,\nHà Nội, Việt Nam',
+                        'Tầng 5, Tòa nhà ABC,\n175 Tây Sơn, Đống Đa,\nHà Nội, Việt Nam',
                       ),
                     ],
                   ),
@@ -1751,7 +1864,7 @@ class _AppFooter extends StatelessWidget {
               runSpacing: 8,
               children: [
                 Text(
-                  '© 2025 Trọ Tốt. Đồ án tốt nghiệp - Đại học Bách khoa Hà Nội.',
+                  '© 2025 Trọ Tốt. Đồ án tốt nghiệp - Đại học Thủy lợi.',
                   style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5),
                 ),
                 Row(
@@ -2049,8 +2162,8 @@ class _FilterSheetState extends State<_FilterSheet> {
               children: [
                 // ====== 1. KHOẢNG GIÁ ======
                 _sectionHeader(
-                  'Khoảng giá (triệu VNĐ/tháng)',
-                  '${_price.start.toStringAsFixed(1)} tr - ${_price.end >= 15 ? '15+ tr (Không giới hạn)' : '${_price.end.toStringAsFixed(1)} tr'}',
+                  'Khoảng giá (triệu/tháng)',
+                  '${_price.start.toStringAsFixed(1)} - ${_price.end >= 15 ? '15+ tr' : '${_price.end.toStringAsFixed(1)} tr'}',
                 ),
                 RangeSlider(
                   values: _price,
@@ -2208,8 +2321,11 @@ class _FilterSheetState extends State<_FilterSheet> {
   }
 
   Widget _sectionHeader(String title, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 8,
+      runSpacing: 4,
       children: [
         Text(
           title,
@@ -2219,12 +2335,19 @@ class _FilterSheetState extends State<_FilterSheet> {
             color: Color(0xFF1A1A2E),
           ),
         ),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF00897B),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE0F2F1),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF00796B),
+            ),
           ),
         ),
       ],

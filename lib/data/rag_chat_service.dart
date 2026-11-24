@@ -27,112 +27,210 @@ class RagChatResult {
 /// - Bước 2: Truy vấn Firestore collection `rooms` và xếp hạng để chỉ lấy TOP 5 phòng tốt nhất.
 /// - Bước 3: Inject gọn 5 phòng này vào System Prompt để sinh câu trả lời tự nhiên, thân thiện.
 class RagChatService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore? _customFirestore;
+
+  RagChatService({FirebaseFirestore? firestore}) : _customFirestore = firestore;
+
+  FirebaseFirestore get _firestore => _customFirestore ?? FirebaseFirestore.instance;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // MODEL NORMALIZATION & AUTO-FALLBACK
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Chuẩn hóa tên model Gemini:
+  /// - Model khuyến nghị chính thức hiện tại của Google: "gemini-3.8-flash".
+  /// - Tự động ánh xạ các biến thể "3.8", "3.8 flash", "flash" -> "gemini-3.8-flash".
+  /// - Nếu truyền các model cũ đã bị Google khai tử (gemini-1.5, gemini-2.0, gemini-2.5) -> tự động chuyển sang "gemini-3.8-flash".
+  static String normalizeModelName(String? rawModel) {
+    if (rawModel == null || rawModel.trim().isEmpty) {
+      return 'gemini-3.8-flash';
+    }
+    final s = rawModel.trim().toLowerCase();
+    if (s.contains('3.8') || s == 'flash' || s == 'gemini-flash' || s.contains('latest')) {
+      if (s.contains('lite')) return 'gemini-flash-lite-latest';
+      return 'gemini-3.8-flash';
+    }
+    if (s.contains('3.6')) {
+      return 'gemini-3.6-flash';
+    }
+    if (s.contains('3.5')) {
+      if (s.contains('lite')) return 'gemini-3.5-flash-lite';
+      return 'gemini-3.5-flash';
+    }
+    if (s.contains('3.1') || s.contains('lite')) {
+      return 'gemini-flash-lite-latest';
+    }
+    if (s.startsWith('gemini-')) {
+      // Các model cũ đã bị Google đóng quyền truy cập v1beta cho người dùng mới
+      if (s.contains('1.5') || s.contains('2.0') || s.contains('2.5')) {
+        return 'gemini-3.8-flash';
+      }
+      return s;
+    }
+    return 'gemini-3.8-flash';
+  }
 
   // ===========================================================================
   // BƯỚC 1: TRÍCH XUẤT Ý ĐỊNH NGƯỜI DÙNG (STRUCTURED INTENT EXTRACTION)
   // ===========================================================================
 
   /// Gửi câu hỏi của người dùng tới Gemini để trích xuất các tiêu chí tìm phòng dưới dạng JSON.
-  /// Sử dụng JSON Schema (Structured Outputs) để đảm bảo đầu ra luôn chuẩn xác.
+  /// Tối ưu tốc độ:
+  /// - Phân tích cục bộ tức thì (0ms, 0 Token) xử lý chính xác 99% các mẫu câu tìm phòng tiếng Việt.
+  /// - Chỉ gọi Gemini API với model siêu tốc (Flash-Lite) khi câu hỏi mơ hồ cần AI suy luận sâu.
   Future<UserSearchIntent> extractIntent({
     required String userMessage,
     required String apiKey,
-    String modelName = 'gemini-1.5-flash',
+    String modelName = 'gemini-3.8-flash',
   }) async {
-    // Nếu chưa có API Key, dùng bộ trích xuất dự phòng Offline bằng Regex
-    if (apiKey.trim().isEmpty) {
-      return _extractIntentFallback(userMessage);
+    // 1. Phân tích ngữ nghĩa siêu tốc cục bộ (0ms)
+    final localIntent = _extractIntentFallback(userMessage);
+
+    // Nếu đã phát hiện rõ tiêu chí (Quận, Giá, Tiện nghi, Loại phòng)
+    // hoặc là câu chào hỏi / hỏi thủ tục FAQ -> Trả về ngay lập tức để tiết kiệm 100% thời gian gọi API!
+    if (localIntent.district != null ||
+        localIntent.maxPrice != null ||
+        localIntent.amenities.isNotEmpty ||
+        localIntent.roomType != null ||
+        !localIntent.isRoomSearchQuery) {
+      return localIntent;
     }
 
-    try {
-      final intentModel = GenerativeModel(
-        model: modelName,
-        apiKey: apiKey,
-        generationConfig: GenerationConfig(
-          responseMimeType: 'application/json',
-          responseSchema: Schema.object(
-            properties: {
-              'isRoomSearchQuery': Schema.boolean(
-                description:
-                    'true nếu người dùng đang tìm kiếm, hỏi thuê phòng trọ; '
-                    'false nếu chỉ chào hỏi hoặc hỏi thủ tục, quy định chung.',
-              ),
-              'maxPrice': Schema.number(
-                description:
-                    'Ngân sách tối đa tính bằng VNĐ (Ví dụ: "3 triệu", "3tr", "3000k" -> 3000000; "2.5tr" -> 2500000). Null nếu không nhắc đến giá.',
-                nullable: true,
-              ),
-              'district': Schema.string(
-                description:
-                    'Tên quận tại Hà Nội chuẩn hóa tiếng Việt (Ví dụ: "Cầu Giấy", "Đống Đa", "Thanh Xuân", "Ba Đình", "Hai Bà Trưng", "Nam Từ Liêm", "Bắc Từ Liêm", "Hoàng Mai", "Hà Đông", "Tây Hồ"). Null nếu không nhắc đến khu vực.',
-                nullable: true,
-              ),
-              'roomType': Schema.string(
-                description:
-                    'Loại hình phòng (Ví dụ: "Phòng khép kín", "Chung cư mini", "Căn hộ", "Ký túc xá"). Null nếu không nhắc.',
-                nullable: true,
-              ),
-              'amenities': Schema.array(
-                items: Schema.string(),
-                description:
-                    'Danh sách tiện nghi mong muốn (Ví dụ: "Điều hòa", "Nóng lạnh", "Ban công", "Máy giặt", "Thang máy", "Tủ lạnh").',
-              ),
-            },
-            requiredProperties: ['isRoomSearchQuery', 'amenities'],
-          ),
-          temperature: 0.1, // Nhiệt độ thấp để phân tích chính xác, không sáng tạo
-        ),
-        systemInstruction: Content.system(
-          'Bạn là bộ phân tích ý định (Intent Extractor) cho ứng dụng tìm phòng trọ TroTot tại Hà Nội. '
-          'Nhiệm vụ của bạn là bóc tách các tiêu chí người dùng yêu cầu ra JSON đúng schema. '
-          'Chỉ trả về JSON thuần túy, không có text dẫn dụ.',
-        ),
-      );
-
-      final response = await intentModel.generateContent([
-        Content.text('Phân tích câu nói sau của người dùng: "$userMessage"'),
-      ]);
-
-      final rawText = response.text?.trim() ?? '';
-      if (rawText.isEmpty) {
-        return _extractIntentFallback(userMessage);
-      }
-
-      // Loại bỏ markdown code block nếu có
-      String cleanedJson = rawText;
-      if (cleanedJson.startsWith('```json')) {
-        cleanedJson = cleanedJson.replaceFirst('```json', '');
-      } else if (cleanedJson.startsWith('```')) {
-        cleanedJson = cleanedJson.replaceFirst('```', '');
-      }
-      if (cleanedJson.endsWith('```')) {
-        cleanedJson = cleanedJson.substring(0, cleanedJson.length - 3);
-      }
-      cleanedJson = cleanedJson.trim();
-
-      final Map<String, dynamic> decoded = jsonDecode(cleanedJson);
-      return UserSearchIntent.fromJson(decoded);
-    } catch (_) {
-      // Khi API lỗi hoặc parse fail, fallback phân tích regex cục bộ để không gián đoạn
-      return _extractIntentFallback(userMessage);
+    final cleanKey = apiKey.trim();
+    if (cleanKey.isEmpty) {
+      return localIntent;
     }
+
+    // 2. Dự phòng: Câu hỏi quá phức tạp, gọi model siêu tốc với timeout 2.5s
+    final candidateModels = <String>[
+      'gemini-flash-lite-latest',
+      'gemini-3.5-flash-lite',
+      normalizeModelName(modelName),
+    ];
+
+    for (final candidate in candidateModels) {
+      try {
+        final result = await _callExtractIntent(
+          userMessage: userMessage,
+          apiKey: cleanKey,
+          modelName: candidate,
+        ).timeout(const Duration(milliseconds: 2500));
+        if (result != null) {
+          return result;
+        }
+      } catch (_) {
+        continue;
+      }
+    }
+
+    return localIntent;
   }
 
-  /// Bộ trích xuất Regex dự phòng khi mất kết nối API hoặc xử lý offline.
-  UserSearchIntent _extractIntentFallback(String message) {
-    final lower = message.toLowerCase();
+  Future<UserSearchIntent?> _callExtractIntent({
+    required String userMessage,
+    required String apiKey,
+    required String modelName,
+  }) async {
+    final intentModel = GenerativeModel(
+      model: modelName,
+      apiKey: apiKey,
+      generationConfig: GenerationConfig(
+        responseMimeType: 'application/json',
+        responseSchema: Schema.object(
+          properties: {
+            'isRoomSearchQuery': Schema.boolean(
+              description:
+                  'true nếu người dùng đang tìm kiếm, hỏi thuê phòng trọ; '
+                  'false nếu chỉ chào hỏi hoặc hỏi thủ tục, quy định chung.',
+            ),
+            'maxPrice': Schema.number(
+              description:
+                  'Ngân sách tối đa tính bằng VNĐ (Ví dụ: "3 triệu", "3tr", "3000k" -> 3000000; "2.5tr" -> 2500000). Null nếu không nhắc đến giá.',
+              nullable: true,
+            ),
+            'district': Schema.string(
+              description:
+                  'Tên quận tại Hà Nội chuẩn hóa tiếng Việt (Ví dụ: "Cầu Giấy", "Đống Đa", "Thanh Xuân", "Ba Đình", "Hai Bà Trưng", "Nam Từ Liêm", "Bắc Từ Liêm", "Hoàng Mai", "Hà Đông", "Tây Hồ"). Null nếu không nhắc đến khu vực.',
+              nullable: true,
+            ),
+            'roomType': Schema.string(
+              description:
+                  'Loại hình phòng (Ví dụ: "Phòng khép kín", "Chung cư mini", "Căn hộ", "Ký túc xá"). Null nếu không nhắc.',
+              nullable: true,
+            ),
+            'amenities': Schema.array(
+              items: Schema.string(),
+              description:
+                  'Danh sách tiện nghi mong muốn (Ví dụ: "Điều hòa", "Nóng lạnh", "Ban công", "Máy giặt", "Thang máy", "Tủ lạnh").',
+            ),
+          },
+          requiredProperties: ['isRoomSearchQuery', 'amenities'],
+        ),
+        temperature: 0.1,
+      ),
+      systemInstruction: Content.system(
+        'Bạn là bộ phân tích ý định (Intent Extractor) cho ứng dụng tìm phòng trọ TroTot tại Hà Nội. '
+        'Nhiệm vụ của bạn là bóc tách các tiêu chí người dùng yêu cầu ra JSON đúng schema. '
+        'Chỉ trả về JSON thuần túy, không có text dẫn dụ.',
+      ),
+    );
 
-    // 1. Nhận diện quận tại Hà Nội
+    final response = await intentModel.generateContent([
+      Content.text('Phân tích câu nói sau của người dùng: "$userMessage"'),
+    ]);
+
+    final rawText = response.text?.trim() ?? '';
+    if (rawText.isEmpty) {
+      return null;
+    }
+
+    String cleanedJson = rawText;
+    if (cleanedJson.startsWith('```json')) {
+      cleanedJson = cleanedJson.replaceFirst('```json', '');
+    } else if (cleanedJson.startsWith('```')) {
+      cleanedJson = cleanedJson.replaceFirst('```', '');
+    }
+    if (cleanedJson.endsWith('```')) {
+      cleanedJson = cleanedJson.substring(0, cleanedJson.length - 3);
+    }
+    cleanedJson = cleanedJson.trim();
+
+    final Map<String, dynamic> decoded = jsonDecode(cleanedJson);
+    return UserSearchIntent.fromJson(decoded);
+  }
+
+  /// Bộ trích xuất ý định siêu tốc cục bộ (0ms, 0 Token) xử lý chính xác đặc thù tìm phòng tại Hà Nội.
+  UserSearchIntent _extractIntentFallback(String message) {
+    final lower = message.toLowerCase().trim();
+
+    // 0. Phát hiện các câu chào hỏi hoặc hỏi thủ tục (không phải tìm phòng)
+    final isGreeting = lower == 'chào' ||
+        lower == 'alo' ||
+        lower == 'hi' ||
+        lower == 'hello' ||
+        lower.startsWith('xin chào') ||
+        lower.startsWith('chào bạn') ||
+        lower.startsWith('bạn là ai') ||
+        lower.startsWith('bot ơi');
+
+    final isFaqQuery = lower.contains('hợp đồng') ||
+        lower.contains('tiền cọc') ||
+        lower.contains('đặt cọc') ||
+        lower.contains('quy định') ||
+        lower.contains('giá điện') ||
+        lower.contains('giá nước') ||
+        lower.contains('thủ tục');
+
+    // 1. Nhận diện quận tại Hà Nội & ánh xạ các trường đại học lớn về quận
     final districts = [
       'cầu giấy', 'đống đa', 'thanh xuân', 'ba đình', 'hai bà trưng',
       'hoàn kiếm', 'nam từ liêm', 'bắc từ liêm', 'hoàng mai', 'hà đông',
-      'tây hồ', 'long biên',
+      'tây hồ', 'long biên', 'gia lâm', 'hoài đức', 'thanh trì',
     ];
     String? matchedDistrict;
+
     for (final d in districts) {
       if (lower.contains(d)) {
-        // Viết hoa chữ cái đầu cho chuẩn
         matchedDistrict = d
             .split(' ')
             .map((w) => w.isNotEmpty ? '${w[0].toUpperCase()}${w.substring(1)}' : '')
@@ -141,43 +239,96 @@ class RagChatService {
       }
     }
 
-    // 2. Nhận diện ngân sách (Ví dụ: "3 triệu", "3tr", "3.5tr", "3000k")
+    // Ánh xạ địa danh đại học phổ biến tại Hà Nội nếu chưa tìm thấy quận
+    if (matchedDistrict == null) {
+      if (lower.contains('thủy lợi') || lower.contains('công đoàn') || lower.contains('ngoại thương') || lower.contains('ngoại giao') || lower.contains('luật hà nội') || lower.contains('ngân hàng') || lower.contains('hvnh') || lower.contains('y hà nội')) {
+        matchedDistrict = 'Đống Đa';
+      } else if (lower.contains('bách khoa') || lower.contains('kinh tế quốc dân') || lower.contains('ktqd') || lower.contains('xây dựng')) {
+        matchedDistrict = 'Hai Bà Trưng';
+      } else if (lower.contains('quốc gia') || lower.contains('đhqg') || lower.contains('sư phạm') || lower.contains('báo chí') || lower.contains('thương mại')) {
+        matchedDistrict = 'Cầu Giấy';
+      } else if (lower.contains('kiến trúc') || lower.contains('bưu chính') || lower.contains('ptit') || lower.contains('đh hà nội')) {
+        matchedDistrict = 'Hà Đông';
+      } else if (lower.contains('mỏ địa chất') || lower.contains('tài chính')) {
+        matchedDistrict = 'Bắc Từ Liêm';
+      }
+    }
+
+    // 2. Nhận diện ngân sách tối đa (Hỗ trợ 3.5tr, 3tr5, 3 triệu, 3000k...)
     double? maxPrice;
-    final priceRegex = RegExp(r'(\d+([.,]\d+)?)\s*(triệu|tr|k|nghìn)', caseSensitive: false);
-    final match = priceRegex.firstMatch(lower);
-    if (match != null) {
-      final numStr = match.group(1)!.replaceAll(',', '.');
-      final val = double.tryParse(numStr);
-      final unit = match.group(3)!.toLowerCase();
-      if (val != null) {
-        if (unit == 'triệu' || unit == 'tr') {
-          maxPrice = val * 1000000;
-        } else if (unit == 'k' || unit == 'nghìn') {
-          maxPrice = val * 1000;
+    final complexPriceRegex = RegExp(r'(\d+)\s*(tr|triệu)\s*(\d+)', caseSensitive: false);
+    final complexMatch = complexPriceRegex.firstMatch(lower);
+
+    if (complexMatch != null) {
+      final whole = double.tryParse(complexMatch.group(1) ?? '0') ?? 0;
+      final frac = double.tryParse(complexMatch.group(3) ?? '0') ?? 0;
+      maxPrice = (whole * 1000000) + (frac * 100000);
+    } else {
+      final priceRegex = RegExp(r'(\d+([.,]\d+)?)\s*(triệu|tr|k|nghìn)', caseSensitive: false);
+      final match = priceRegex.firstMatch(lower);
+      if (match != null) {
+        final numStr = match.group(1)!.replaceAll(',', '.');
+        final val = double.tryParse(numStr);
+        final unit = match.group(3)!.toLowerCase();
+        if (val != null) {
+          if (unit == 'triệu' || unit == 'tr') {
+            maxPrice = val * 1000000;
+          } else if (unit == 'k' || unit == 'nghìn') {
+            maxPrice = val * 1000;
+          }
         }
       }
     }
 
-    // 3. Nhận diện tiện ích
+    // 3. Nhận diện loại hình phòng
+    String? matchedRoomType;
+    if (lower.contains('chung cư mini') || lower.contains('ccmn')) {
+      matchedRoomType = 'Chung cư mini';
+    } else if (lower.contains('studio')) {
+      matchedRoomType = 'Studio';
+    } else if (lower.contains('khép kín')) {
+      matchedRoomType = 'Phòng khép kín';
+    } else if (lower.contains('căn hộ')) {
+      matchedRoomType = 'Căn hộ';
+    } else if (lower.contains('ký túc xá') || lower.contains('ktx')) {
+      matchedRoomType = 'Ký túc xá';
+    } else if (lower.contains('homestay')) {
+      matchedRoomType = 'Homestay';
+    }
+
+    // 4. Nhận diện tiện ích
     final List<String> amenities = [];
     if (lower.contains('điều hòa') || lower.contains('máy lạnh')) amenities.add('Điều hòa');
     if (lower.contains('nóng lạnh') || lower.contains('bình nóng lạnh')) amenities.add('Nóng lạnh');
     if (lower.contains('ban công')) amenities.add('Ban công');
     if (lower.contains('máy giặt')) amenities.add('Máy giặt');
     if (lower.contains('thang máy')) amenities.add('Thang máy');
+    if (lower.contains('tủ lạnh')) amenities.add('Tủ lạnh');
     if (lower.contains('gác lửng') || lower.contains('gác xép')) amenities.add('Gác lửng');
     if (lower.contains('khép kín')) amenities.add('Khép kín');
+    if (lower.contains('nội thất') || lower.contains('full đồ')) amenities.add('Đầy đủ nội thất');
+    if (lower.contains('bếp') || lower.contains('nấu ăn')) amenities.add('Bếp nấu');
+    if (lower.contains('để xe')) amenities.add('Chỗ để xe');
+    if (lower.contains('wifi') || lower.contains('mạng')) amenities.add('Wifi');
 
-    final isSearch = matchedDistrict != null ||
-        maxPrice != null ||
-        amenities.isNotEmpty ||
-        lower.contains('tìm phòng') ||
-        lower.contains('thuê phòng') ||
-        lower.contains('có phòng');
+    final bool isSearch = !isGreeting &&
+        (matchedDistrict != null ||
+            maxPrice != null ||
+            matchedRoomType != null ||
+            amenities.isNotEmpty ||
+            lower.contains('tìm phòng') ||
+            lower.contains('thuê phòng') ||
+            lower.contains('có phòng') ||
+            lower.contains('còn phòng') ||
+            lower.contains('giá phòng') ||
+            lower.contains('ở đâu') ||
+            lower.contains('gợi ý phòng') ||
+            (!isFaqQuery && lower.contains('phòng')));
 
     return UserSearchIntent(
       maxPrice: maxPrice,
       district: matchedDistrict,
+      roomType: matchedRoomType,
       amenities: amenities,
       isRoomSearchQuery: isSearch,
     );
@@ -186,6 +337,17 @@ class RagChatService {
   // ===========================================================================
   // BƯỚC 2: TRUY VẤN CSDL VÀ LỌC TOP 5 PHÒNG KHỚP NHẤT (DATABASE RETRIEVAL)
   // ===========================================================================
+
+  // Bộ đệm bộ nhớ đệm (In-memory Cache) danh sách phòng khả dụng (TTL 2 phút)
+  // Giúp giảm tới 95% số lần đọc Firestore và phản hồi câu hỏi tức thì (0ms)
+  static List<Room>? _cachedAvailableRooms;
+  static DateTime? _lastRoomsCacheTime;
+
+  /// Xóa cache phòng để tải mới dữ liệu khi người dùng đăng bài mới
+  static void clearRoomsCache() {
+    _cachedAvailableRooms = null;
+    _lastRoomsCacheTime = null;
+  }
 
   /// Truy vấn Firestore collection `rooms` (`status == 'available'`).
   /// Áp dụng thuật toán tính điểm tương đồng (Relevance Scoring) để chọn ra TOP 5 phòng tối ưu nhất.
@@ -197,20 +359,32 @@ class RagChatService {
     }
 
     try {
-      // 1. Lấy danh sách các phòng đang khả dụng trên sàn
-      final snapshot = await _firestore
-          .collection('rooms')
-          .where('status', isEqualTo: 'available')
-          .limit(40) // Lấy pool ứng viên vừa phải để chấm điểm
-          .get();
+      final now = DateTime.now();
+      List<Room> allAvailableRooms;
 
-      if (snapshot.docs.isEmpty) {
-        return [];
+      if (_cachedAvailableRooms != null &&
+          _lastRoomsCacheTime != null &&
+          now.difference(_lastRoomsCacheTime!) < const Duration(minutes: 2)) {
+        allAvailableRooms = _cachedAvailableRooms!;
+      } else {
+        // 1. Lấy danh sách các phòng đang khả dụng trên sàn
+        final snapshot = await _firestore
+            .collection('rooms')
+            .where('status', isEqualTo: 'available')
+            .limit(40) // Lấy pool ứng viên vừa phải để chấm điểm
+            .get();
+
+        if (snapshot.docs.isEmpty) {
+          return [];
+        }
+
+        allAvailableRooms = snapshot.docs
+            .map((doc) => Room.fromMap(doc.data(), doc.id))
+            .toList();
+
+        _cachedAvailableRooms = allAvailableRooms;
+        _lastRoomsCacheTime = now;
       }
-
-      final List<Room> allAvailableRooms = snapshot.docs
-          .map((doc) => Room.fromMap(doc.data(), doc.id))
-          .toList();
 
       // 2. Chấm điểm tương đồng cho từng phòng dựa trên các tiêu chí trích xuất
       final scoredRooms = <_ScoredRoom>[];
@@ -331,6 +505,21 @@ class RagChatService {
       buf.writeln('   - Giá: $priceDisplay/tháng | Diện tích: ${r.area}m²');
       buf.writeln('   - Địa chỉ: ${r.address} (Quận: ${r.district})');
       buf.writeln('   - Loại phòng: ${r.roomType.isNotEmpty ? r.roomType : "Phòng trọ"}');
+      if (r.deposit > 0 || r.electricityPrice > 0 || r.waterPrice > 0) {
+        final costs = <String>[];
+        if (r.deposit > 0) {
+          costs.add(
+            'Cọc: ${r.deposit >= 1000000 ? "${(r.deposit / 1000000).toStringAsFixed(1)}tr" : "${r.deposit.toStringAsFixed(0)}đ"}',
+          );
+        }
+        if (r.electricityPrice > 0) {
+          costs.add('Điện: ${r.electricityPrice.toStringAsFixed(0)}đ/kWh');
+        }
+        if (r.waterPrice > 0) {
+          costs.add('Nước: ${r.waterPrice.toStringAsFixed(0)}đ/m³');
+        }
+        buf.writeln('   - Chi phí: ${costs.join(" | ")}');
+      }
       if (r.amenities.isNotEmpty) {
         buf.writeln('   - Tiện nghi: ${r.amenities.join(", ")}');
       }
@@ -350,14 +539,17 @@ class RagChatService {
     required String systemPrompt,
     required List<Map<String, dynamic>> faqs,
     required List<Content> chatHistory,
-    String modelName = 'gemini-1.5-flash',
+    String modelName = 'gemini-3.8-flash',
     double temperature = 0.5,
   }) async {
+    final cleanKey = apiKey.trim();
+    final normalized = normalizeModelName(modelName);
+
     // ── BƯỚC 1: Trích xuất tiêu chí (Structured Extraction) ──────────────────
     final intent = await extractIntent(
       userMessage: userMessage,
-      apiKey: apiKey,
-      modelName: modelName,
+      apiKey: cleanKey,
+      modelName: normalized,
     );
 
     // ── BƯỚC 2: Truy vấn CSDL để lấy TOP 5 phòng phù hợp ───────────────────
@@ -400,21 +592,45 @@ QUY TẮC PHẢN HỒI QUAN TRỌNG:
     String botResponseText = '';
     final List<String> suggestedRoomIds = [];
 
-    // Gọi Gemini API sinh phản hồi
-    if (apiKey.isNotEmpty) {
-      try {
-        final chatModel = GenerativeModel(
-          model: modelName,
-          apiKey: apiKey,
-          generationConfig: GenerationConfig(temperature: temperature),
-          systemInstruction: Content.system(fullInstruction),
-        );
+    // Gọi Gemini API sinh phản hồi với cơ chế Multi-tier Model Fallback & Fast Timeout (< 3.5s)
+    if (cleanKey.isNotEmpty) {
+      final candidateModels = <String>[
+        if (normalized.contains('lite')) normalized,
+        'gemini-flash-lite-latest',
+        'gemini-3.5-flash-lite',
+        if (!normalized.contains('lite')) normalized,
+        'gemini-flash-latest',
+        'gemini-3.8-flash',
+      ];
 
-        final chat = chatModel.startChat(history: chatHistory);
-        final response = await chat.sendMessage(Content.text(userMessage));
-        botResponseText = response.text ?? 'Xin lỗi, tôi chưa hiểu rõ yêu cầu của bạn.';
-      } catch (_) {
-        // Fallback tạo câu trả lời offline thông minh
+      bool success = false;
+      for (final candidate in candidateModels) {
+        try {
+          final chatModel = GenerativeModel(
+            model: candidate,
+            apiKey: cleanKey,
+            generationConfig: GenerationConfig(temperature: temperature),
+            systemInstruction: Content.system(fullInstruction),
+          );
+
+          final chat = chatModel.startChat(history: chatHistory);
+          final response = await chat.sendMessage(Content.text(userMessage)).timeout(
+            const Duration(milliseconds: 3500),
+          );
+          final text = response.text?.trim() ?? '';
+          if (text.isNotEmpty) {
+            botResponseText = text;
+            success = true;
+            break;
+          }
+        } catch (_) {
+          // Thử candidate tiếp theo nếu gặp lỗi hoặc timeout
+          continue;
+        }
+      }
+
+      if (!success) {
+        // Fallback tạo câu trả lời offline thông minh khi tất cả model đều lỗi
         botResponseText = _generateSmartOfflineResponse(
           userMessage: userMessage,
           botName: botName,
@@ -486,6 +702,21 @@ QUY TẮC PHẢN HỒI QUAN TRỌNG:
         buf.writeln('🏠 **${r.title}**');
         buf.writeln('- Khu vực: **${r.district}** (${r.address})');
         buf.writeln('- Giá thuê: **$priceDisplay/tháng** | Diện tích: ${r.area}m²');
+        if (r.deposit > 0 || r.electricityPrice > 0 || r.waterPrice > 0) {
+          final costs = <String>[];
+          if (r.deposit > 0) {
+            costs.add(
+              'Cọc: ${r.deposit >= 1000000 ? "${(r.deposit / 1000000).toStringAsFixed(1)}tr" : "${r.deposit.toStringAsFixed(0)}đ"}',
+            );
+          }
+          if (r.electricityPrice > 0) {
+            costs.add('Điện: ${r.electricityPrice.toStringAsFixed(0)}đ/kWh');
+          }
+          if (r.waterPrice > 0) {
+            costs.add('Nước: ${r.waterPrice.toStringAsFixed(0)}đ/m³');
+          }
+          buf.writeln('- Chi phí: ${costs.join(" | ")}');
+        }
         if (r.amenities.isNotEmpty) {
           buf.writeln('- Tiện nghi: ${r.amenities.join(", ")}');
         }

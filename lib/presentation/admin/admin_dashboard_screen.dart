@@ -1,10 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'tabs/admin_ai_monitor_tab.dart';
 import 'tabs/admin_notifications_tab.dart';
 import 'tabs/admin_overview_tab.dart';
+import 'tabs/admin_packages_tab.dart';
 import 'tabs/admin_reports_tab.dart';
 import 'tabs/admin_rooms_tab.dart';
 import 'tabs/admin_users_tab.dart';
@@ -78,6 +80,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       const AdminReportsTab(),
       const AdminNotificationsTab(),
       const AdminAiMonitorTab(),
+      const AdminPackagesTab(),
     ];
 
     final tabTitles = [
@@ -87,6 +90,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       'Báo cáo vi phạm',
       'Gửi thông báo',
       'Trợ lý AI & Tri thức',
+      'Quản lý Gói & Doanh thu',
     ];
 
     return Scaffold(
@@ -118,87 +122,122 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           Expanded(
             child: Column(
               children: [
-                // Top AppBar
-                Container(
-                  height: 64,
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border(
-                      bottom: BorderSide(color: Colors.grey.shade200, width: 1),
-                    ),
+                // Top AppBar with SafeArea & dark status bar icons for mobile punch-hole cameras
+                AnnotatedRegion<SystemUiOverlayStyle>(
+                  value: SystemUiOverlayStyle.dark.copyWith(
+                    statusBarColor: Colors.transparent,
+                    statusBarIconBrightness: Brightness.dark,
+                    statusBarBrightness: Brightness.light,
                   ),
-                  child: Row(
-                    children: [
-                      if (!isDesktop)
-                        Builder(
-                          builder: (ctx) => IconButton(
-                            icon: const Icon(Icons.menu_rounded),
-                            onPressed: () => Scaffold.of(ctx).openDrawer(),
-                          ),
-                        ),
-                      Text(
-                        tabTitles[_currentTabIndex],
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1A1A2E),
-                        ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border(
+                        bottom: BorderSide(color: Colors.grey.shade200, width: 1),
                       ),
-                      const Spacer(),
-
-                      // Admin pill badge
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF00897B).withAlpha(15),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: const Color(0xFF00897B).withAlpha(40),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.verified_user_rounded,
-                              size: 16,
-                              color: Color(0xFF00897B),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              user?.email ?? 'Admin',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF00897B),
+                    ),
+                    child: SafeArea(
+                      top: !isDesktop,
+                      bottom: false,
+                      child: SizedBox(
+                        height: isDesktop ? 64 : 54,
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: isDesktop ? 24 : 10),
+                          child: Row(
+                            children: [
+                              if (!isDesktop) ...[
+                                Builder(
+                                  builder: (ctx) => IconButton(
+                                    icon: const Icon(Icons.menu_rounded),
+                                    onPressed: () => Scaffold.of(ctx).openDrawer(),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                              ],
+                              Expanded(
+                                child: Text(
+                                  tabTitles[_currentTabIndex],
+                                  style: TextStyle(
+                                    fontSize: isDesktop ? 18 : 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFF1A1A2E),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 14),
+                              const SizedBox(width: 8),
 
-                      // Nút về trang chủ User
-                      Tooltip(
-                        message: 'Mở ứng dụng người dùng',
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            Navigator.pushReplacementNamed(context, '/home');
-                          },
-                          icon: const Icon(Icons.open_in_new_rounded, size: 16),
-                          label: const Text('Xem trang User'),
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(color: Colors.grey.shade300),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
+                              // Admin pill badge
+                              Container(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: isDesktop ? 12 : 8,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF00897B).withAlpha(15),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: const Color(0xFF00897B).withAlpha(40),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.verified_user_rounded,
+                                      size: 16,
+                                      color: Color(0xFF00897B),
+                                    ),
+                                    if (isDesktop) ...[
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        user?.email ?? 'Admin',
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF00897B),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+
+                              // Nút về trang chủ User
+                              Tooltip(
+                                message: 'Mở ứng dụng người dùng',
+                                child: isDesktop
+                                    ? OutlinedButton.icon(
+                                        onPressed: () {
+                                          Navigator.pushReplacementNamed(context, '/home');
+                                        },
+                                        icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                                        label: const Text('Xem trang User'),
+                                        style: OutlinedButton.styleFrom(
+                                          side: BorderSide(color: Colors.grey.shade300),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                      )
+                                    : IconButton(
+                                        onPressed: () {
+                                          Navigator.pushReplacementNamed(context, '/home');
+                                        },
+                                        icon: const Icon(Icons.open_in_new_rounded, size: 20),
+                                        tooltip: 'Xem trang User',
+                                        style: IconButton.styleFrom(
+                                          foregroundColor: const Color(0xFF00897B),
+                                        ),
+                                      ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ),
 

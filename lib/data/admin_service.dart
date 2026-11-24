@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../domain/models/app_user.dart';
 import '../domain/models/report.dart';
 import '../domain/models/room.dart';
+import 'rag_chat_service.dart';
 
 class AdminDashboardStats {
   final int totalRooms;
@@ -195,21 +196,35 @@ class AdminService {
   }
 
   // 4. Quản lý AI Knowledge & System Settings
+  static Map<String, dynamic>? _cachedAiKnowledge;
+  static DateTime? _lastAiKnowledgeFetch;
+
   Future<Map<String, dynamic>> getAiKnowledge() async {
+    final now = DateTime.now();
+    if (_cachedAiKnowledge != null &&
+        _lastAiKnowledgeFetch != null &&
+        now.difference(_lastAiKnowledgeFetch!) < const Duration(minutes: 2)) {
+      return Map<String, dynamic>.from(_cachedAiKnowledge!);
+    }
+
     try {
       final doc = await _firestore
           .collection('system_settings')
           .doc('ai_knowledge')
           .get();
       if (doc.exists && doc.data() != null) {
-        return doc.data()!;
+        final data = Map<String, dynamic>.from(doc.data()!);
+        data['modelName'] = RagChatService.normalizeModelName(data['modelName'] as String?);
+        _cachedAiKnowledge = data;
+        _lastAiKnowledgeFetch = now;
+        return Map<String, dynamic>.from(data);
       }
     } catch (_) {}
 
-    // Giá trị cấu hình mặc định chuẩn đồ án
-    return {
+    // Giá trị cấu hình mặc định chuẩn đồ án (Gemini Flash-Lite siêu tốc & Gemini 3.8 Flash)
+    final defaultKnowledge = {
       'botName': 'Trợ lý ảo TroTot AI',
-      'modelName': 'gemini-1.5-flash',
+      'modelName': 'gemini-flash-lite-latest',
       'temperature': 0.5,
       'systemPrompt':
           'Bạn là Trợ lý ảo AI thông minh của ứng dụng Trọ Tốt, chuyên tư vấn tìm kiếm và thuê phòng trọ tại Việt Nam. '
@@ -231,12 +246,21 @@ class AdminService {
       ],
       'updatedAt': null,
     };
+    _cachedAiKnowledge = defaultKnowledge;
+    _lastAiKnowledgeFetch = now;
+    return Map<String, dynamic>.from(defaultKnowledge);
   }
 
   Future<void> saveAiKnowledge(Map<String, dynamic> data) async {
-    data['updatedAt'] = FieldValue.serverTimestamp();
+    _cachedAiKnowledge = null; // Invalidate cache để cập nhật ngay
+    final sanitized = Map<String, dynamic>.from(data);
+    if (sanitized.containsKey('modelName')) {
+      sanitized['modelName'] =
+          RagChatService.normalizeModelName(sanitized['modelName'] as String?);
+    }
+    sanitized['updatedAt'] = FieldValue.serverTimestamp();
     await _firestore.collection('system_settings').doc('ai_knowledge').set(
-          data,
+          sanitized,
           SetOptions(merge: true),
         );
   }

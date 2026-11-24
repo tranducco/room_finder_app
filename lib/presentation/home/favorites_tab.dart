@@ -111,12 +111,13 @@ class _FavoritesTabState extends State<FavoritesTab> {
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: GridView.builder(
-                  clipBehavior: Clip.none,
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  clipBehavior: Clip.hardEdge,
+                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                     maxCrossAxisExtent: 250.0,
                     mainAxisSpacing: 16.0,
                     crossAxisSpacing: 16.0,
-                    childAspectRatio: 0.68,
+                    childAspectRatio:
+                        MediaQuery.of(context).size.width < 420 ? 0.60 : 0.68,
                   ),
                   itemCount: _favoriteRooms.length,
                   itemBuilder: (context, index) {

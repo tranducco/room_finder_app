@@ -156,7 +156,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 child: Container(
                   width: 80,
                   height: 80,
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(12),
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     color: Colors.white,
                     shape: BoxShape.circle,
@@ -168,7 +169,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                     ],
                   ),
-                  child: const AppLogo(size: 60),
+                  child: const AppLogo(
+                    size: 56,
+                    isCircle: true,
+                  ),
                 ),
               ),
               const SizedBox(height: 14),

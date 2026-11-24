@@ -27,6 +27,8 @@ class _AdminStatCardState extends State<AdminStatCard> {
 
   @override
   Widget build(BuildContext context) {
+    final isSmall = MediaQuery.of(context).size.width < 720;
+
     return MouseRegion(
       cursor: widget.onTap != null ? SystemMouseCursors.click : SystemMouseCursors.basic,
       onEnter: (_) => setState(() => _isHovered = true),
@@ -37,7 +39,7 @@ class _AdminStatCardState extends State<AdminStatCard> {
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
           transform: Matrix4.translationValues(0, _isHovered ? -4 : 0, 0),
-          padding: const EdgeInsets.all(20),
+          padding: EdgeInsets.all(isSmall ? 12 : 20),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
@@ -64,47 +66,50 @@ class _AdminStatCardState extends State<AdminStatCard> {
                     child: Text(
                       widget.title,
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: isSmall ? 11 : 13,
                         fontWeight: FontWeight.w600,
                         color: Colors.grey.shade600,
-                        letterSpacing: 0.3,
+                        letterSpacing: isSmall ? 0.1 : 0.3,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  const SizedBox(width: 4),
                   Container(
-                    padding: const EdgeInsets.all(10),
+                    padding: EdgeInsets.all(isSmall ? 6 : 10),
                     decoration: BoxDecoration(
                       color: widget.color.withAlpha(25),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(isSmall ? 8 : 12),
                     ),
                     child: Icon(
                       widget.icon,
-                      size: 22,
+                      size: isSmall ? 16 : 22,
                       color: widget.color,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
+              SizedBox(height: isSmall ? 6 : 14),
               Text(
                 widget.value,
-                style: const TextStyle(
-                  fontSize: 28,
+                style: TextStyle(
+                  fontSize: isSmall ? 22 : 28,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF1A1A2E),
+                  color: const Color(0xFF1A1A2E),
                 ),
               ),
               if (widget.subtitle != null) ...[
-                const SizedBox(height: 6),
+                SizedBox(height: isSmall ? 2 : 6),
                 Text(
                   widget.subtitle!,
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: isSmall ? 10.5 : 12,
                     fontWeight: FontWeight.w500,
                     color: widget.color,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ],

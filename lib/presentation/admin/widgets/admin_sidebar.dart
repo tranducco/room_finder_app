@@ -59,6 +59,11 @@ class AdminSidebar extends StatelessWidget {
         title: 'Trợ lý AI & Tri thức',
         icon: Icons.smart_toy_rounded,
       ),
+      _NavItem(
+        index: 6,
+        title: 'Gói VIP & Doanh thu',
+        icon: Icons.monetization_on_rounded,
+      ),
     ];
 
     return Container(
@@ -69,7 +74,10 @@ class AdminSidebar extends StatelessWidget {
           right: BorderSide(color: Colors.grey.shade200, width: 1),
         ),
       ),
-      child: Column(
+      child: SafeArea(
+        top: isDrawer,
+        bottom: isDrawer,
+        child: Column(
         children: [
           // Header / Logo
           Container(
@@ -388,7 +396,8 @@ class AdminSidebar extends StatelessWidget {
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 }
 

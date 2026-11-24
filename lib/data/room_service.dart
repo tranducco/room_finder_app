@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../domain/models/app_user.dart';
 import '../domain/models/room.dart';
 import 'mock_data.dart';
 import 'notification_service.dart';
@@ -165,6 +166,16 @@ class RoomService {
         .where('userId', isEqualTo: userId)
         .get();
     return snapshot.docs.map((doc) => doc.data()['roomId'] as String).toList();
+  }
+
+  // Stream danh sách ID các phòng yêu thích realtime
+  Stream<List<String>> getFavoriteRoomIdsStream(String userId) {
+    return _firestore
+        .collection('favorites')
+        .where('userId', isEqualTo: userId)
+        .snapshots()
+        .map((snap) =>
+            snap.docs.map((doc) => doc.data()['roomId'] as String).toList());
   }
 
   // Kiểm tra phòng có được yêu thích hay không
@@ -403,14 +414,60 @@ class RoomService {
   }
 
   // Đẩy dữ liệu mẫu lên Firestore (Chỉ dùng cho bước Development)
-  Future<void> seedMockData() async {
-    final batch = _firestore.batch();
-
-    for (var room in mockRooms) {
-      final docRef = _firestore.collection('rooms').doc(room.roomId);
-      batch.set(docRef, room.toMap());
+  // Lấy thông tin người đăng phòng (AppUser)
+  Future<AppUser?> getOwnerProfile(String ownerId) async {
+    try {
+      final doc = await _firestore.collection('users').doc(ownerId).get();
+      if (!doc.exists || doc.data() == null) return null;
+      return AppUser.fromMap(doc.data()!, doc.id);
+    } catch (_) {
+      return null;
     }
+  }
 
-    await batch.commit();
+  // Lấy thống kê của chủ phòng (số tin đăng, số sao trung bình, danh sách phòng)
+  Future<Map<String, dynamic>> getOwnerOverview(String ownerId) async {
+    try {
+      final rooms = await getMyRooms(ownerId);
+      int totalReviews = 0;
+      double sumScore = 0.0;
+      for (final r in rooms) {
+        if (r.totalReviews > 0) {
+          totalReviews += r.totalReviews;
+          sumScore += (r.averageRating * r.totalReviews);
+        }
+      }
+      final double avgRating =
+          totalReviews > 0 ? (sumScore / totalReviews) : 0.0;
+      return {
+        'roomCount': rooms.length,
+        'averageRating': avgRating,
+        'totalReviews': totalReviews,
+        'rooms': rooms,
+      };
+    } catch (_) {
+      return {
+        'roomCount': 0,
+        'averageRating': 0.0,
+        'totalReviews': 0,
+        'rooms': <Room>[],
+      };
+    }
+  }
+
+  Future<void> seedMockData() async {
+    // Chia theo từng batch nhỏ (100 phòng/lần) để đảm bảo không vượt quá giới hạn 500 write của Firestore
+    const int chunkSize = 100;
+    for (int i = 0; i < mockRooms.length; i += chunkSize) {
+      final end =
+          (i + chunkSize < mockRooms.length) ? i + chunkSize : mockRooms.length;
+      final batch = _firestore.batch();
+      for (int j = i; j < end; j++) {
+        final room = mockRooms[j];
+        final docRef = _firestore.collection('rooms').doc(room.roomId);
+        batch.set(docRef, room.toMap());
+      }
+      await batch.commit();
+    }
   }
 }

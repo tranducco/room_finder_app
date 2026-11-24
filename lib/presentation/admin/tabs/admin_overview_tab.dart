@@ -79,9 +79,10 @@ class _AdminOverviewTabState extends State<AdminOverviewTab> {
     }
 
     final stats = _stats;
+    final isSmall = MediaQuery.of(context).size.width < 720;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(isSmall ? 12 : 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -89,62 +90,70 @@ class _AdminOverviewTabState extends State<AdminOverviewTab> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Tổng quan hệ thống',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A1A2E),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Tổng quan hệ thống',
+                      style: TextStyle(
+                        fontSize: isSmall ? 18 : 24,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF1A1A2E),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Báo cáo và các chỉ số vận hành thời gian thực của sàn Trọ Tốt',
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                  ),
-                ],
-              ),
-              ElevatedButton.icon(
-                onPressed: _loadOverviewData,
-                icon: const Icon(Icons.refresh_rounded, size: 16),
-                label: const Text('Làm mới số liệu'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00897B),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Báo cáo và các chỉ số vận hành thời gian thực của sàn Trọ Tốt',
+                      style: TextStyle(fontSize: isSmall ? 12 : 13, color: Colors.grey.shade600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ),
+              const SizedBox(width: 8),
+              isSmall
+                  ? IconButton.filled(
+                      onPressed: _loadOverviewData,
+                      icon: const Icon(Icons.refresh_rounded, size: 18),
+                      style: IconButton.styleFrom(backgroundColor: const Color(0xFF00897B)),
+                    )
+                  : ElevatedButton.icon(
+                      onPressed: _loadOverviewData,
+                      icon: const Icon(Icons.refresh_rounded, size: 16),
+                      label: const Text('Làm mới số liệu'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00897B),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
             ],
           ),
 
-          const SizedBox(height: 24),
+          SizedBox(height: isSmall ? 14 : 24),
 
           // KPI Cards Grid
           LayoutBuilder(
             builder: (context, constraints) {
               final width = constraints.maxWidth;
-              int crossAxisCount = 4;
-              if (width < 640) {
-                crossAxisCount = 1;
-              } else if (width < 960) {
-                crossAxisCount = 2;
-              } else if (width < 1280) {
-                crossAxisCount = 3;
-              }
+              final isSmallScreen = width < 640;
+              final crossAxisCount = isSmallScreen
+                  ? 2
+                  : (width < 960 ? 2 : (width < 1280 ? 3 : 4));
+              final childAspectRatio = isSmallScreen ? 1.35 : 1.8;
 
               return GridView.count(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 crossAxisCount: crossAxisCount,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-                childAspectRatio: 1.8,
+                crossAxisSpacing: isSmallScreen ? 10 : 16,
+                mainAxisSpacing: isSmallScreen ? 10 : 16,
+                childAspectRatio: childAspectRatio,
                 children: [
                   AdminStatCard(
                     title: 'TỔNG TIN ĐĂNG PHÒNG',
@@ -238,8 +247,9 @@ class _AdminOverviewTabState extends State<AdminOverviewTab> {
   }
 
   Widget _buildPendingRoomsCard() {
+    final isSmall = MediaQuery.of(context).size.width < 720;
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(isSmall ? 12 : 20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -258,31 +268,38 @@ class _AdminOverviewTabState extends State<AdminOverviewTab> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.shade50,
-                      borderRadius: BorderRadius.circular(8),
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.hourglass_top_rounded,
+                        size: 20,
+                        color: Colors.amber.shade800,
+                      ),
                     ),
-                    child: Icon(
-                      Icons.hourglass_top_rounded,
-                      size: 20,
-                      color: Colors.amber.shade800,
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Tin đăng chờ duyệt gần đây',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1A1A2E),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  const Text(
-                    'Tin đăng chờ duyệt gần đây',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A1A2E),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 6),
               TextButton(
                 onPressed: () => widget.onNavigateToTab(1, statusFilter: 'pending_approval'),
                 child: const Text('Xem tất cả'),
@@ -411,8 +428,9 @@ class _AdminOverviewTabState extends State<AdminOverviewTab> {
   }
 
   Widget _buildPendingReportsCard() {
+    final isSmall = MediaQuery.of(context).size.width < 720;
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(isSmall ? 12 : 20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -431,31 +449,38 @@ class _AdminOverviewTabState extends State<AdminOverviewTab> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(8),
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.warning_amber_rounded,
+                        size: 20,
+                        color: Colors.red.shade700,
+                      ),
                     ),
-                    child: Icon(
-                      Icons.warning_amber_rounded,
-                      size: 20,
-                      color: Colors.red.shade700,
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Báo cáo vi phạm mới',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1A1A2E),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  const Text(
-                    'Báo cáo vi phạm mới',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A1A2E),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 6),
               TextButton(
                 onPressed: () => widget.onNavigateToTab(3),
                 child: const Text('Xem tất cả'),

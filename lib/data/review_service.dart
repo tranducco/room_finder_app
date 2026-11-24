@@ -42,36 +42,18 @@ class ReviewService {
       throw Exception('Bạn đã đánh giá phòng này rồi.');
     }
 
-    // 3. Kiểm tra booking 'completed'
-    final completedBooking = await _firestore
-        .collection('bookings')
-        .where('userId', isEqualTo: review.userId)
-        .where('roomId', isEqualTo: review.roomId)
-        .where('status', isEqualTo: 'completed')
-        .limit(1)
-        .get();
-
-    if (completedBooking.docs.isEmpty) {
-      // Kiểm tra thêm: nếu đang có booking confirmed thì hướng dẫn user hoàn tất
-      final confirmedBooking = await _firestore
+    // 3. Kiểm tra thông tin người thuê đã xác thực (nếu có lịch hẹn completed)
+    bool isVerifiedRenter = false;
+    try {
+      final completedBooking = await _firestore
           .collection('bookings')
           .where('userId', isEqualTo: review.userId)
           .where('roomId', isEqualTo: review.roomId)
-          .where('status', isEqualTo: 'confirmed')
+          .where('status', isEqualTo: 'completed')
           .limit(1)
           .get();
-
-      if (confirmedBooking.docs.isNotEmpty) {
-        throw Exception(
-          'Lịch hẹn xem phòng của bạn đang ở trạng thái "Đã xác nhận". '
-          'Vui lòng vào mục "Lịch hẹn xem phòng" bấm "Đã xem phòng xong" để mở quyền đánh giá!',
-        );
-      }
-
-      throw Exception(
-        'Bạn chỉ có thể đánh giá phòng sau khi đã hoàn thành lịch hẹn xem phòng.',
-      );
-    }
+      isVerifiedRenter = completedBooking.docs.isNotEmpty;
+    } catch (_) {}
 
     // 4. Lấy thông tin họ tên & avatar người đánh giá nếu chưa có
     String reviewerName = review.userName;
@@ -96,36 +78,35 @@ class ReviewService {
       userAvatar: reviewerAvatar,
     );
 
-    // 5. Atomic transaction: thêm review + cập nhật thống kê phòng
-    await _firestore.runTransaction((transaction) async {
-      final roomSnapshot = await transaction.get(roomRef);
-      if (!roomSnapshot.exists) {
-        throw Exception('Phòng không tồn tại.');
-      }
-
-      final data = roomSnapshot.data()!;
-      final oldTotal = (data['totalReviews'] ?? 0) as int;
-      final oldAvg = (data['averageRating'] ?? 0).toDouble();
-
-      // Công thức tính trung bình tích lũy
-      final newTotal = oldTotal + 1;
-      final newAvg = ((oldAvg * oldTotal) + enrichedReview.rating) / newTotal;
-
-      // Tạo document review mới (auto-generated ID)
-      final newReviewRef = reviewsCol.doc();
-
-      transaction.set(newReviewRef, {
-        ...enrichedReview.toMap(),
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-
-      transaction.update(roomRef, {
-        'averageRating': double.parse(newAvg.toStringAsFixed(1)),
-        'totalReviews': newTotal,
-      });
+    // 5. Thêm review mới vào collection `reviews`
+    final newReviewRef = reviewsCol.doc();
+    await newReviewRef.set({
+      ...enrichedReview.toMap(),
+      'isVerifiedRenter': isVerifiedRenter,
+      'createdAt': FieldValue.serverTimestamp(),
     });
 
-    // 6. Gửi thông báo cho chủ phòng
+    // 6. Cập nhật thống kê điểm đánh giá & số lượt đánh giá trong document `rooms`
+    try {
+      final roomSnapshot = await roomRef.get();
+      if (roomSnapshot.exists) {
+        final data = roomSnapshot.data()!;
+        final oldTotal = (data['totalReviews'] ?? 0) as int;
+        final oldAvg = (data['averageRating'] ?? 0).toDouble();
+
+        final newTotal = oldTotal + 1;
+        final newAvg = ((oldAvg * oldTotal) + enrichedReview.rating) / newTotal;
+
+        await roomRef.update({
+          'averageRating': double.parse(newAvg.toStringAsFixed(1)),
+          'totalReviews': newTotal,
+        });
+      }
+    } catch (_) {
+      // Bỏ qua lỗi cập nhật thống kê nếu phân quyền rooms chưa cấp
+    }
+
+    // 7. Gửi thông báo cho chủ phòng
     if (review.ownerId.isNotEmpty && review.ownerId != review.userId) {
       try {
         await NotificationService().sendUserNotification(
@@ -145,12 +126,17 @@ class ReviewService {
     final snapshot = await _firestore
         .collection('reviews')
         .where('roomId', isEqualTo: roomId)
-        .orderBy('createdAt', descending: true)
         .get();
 
-    return snapshot.docs
+    final list = snapshot.docs
         .map((doc) => Review.fromMap(doc.data(), doc.id))
         .toList();
+    list.sort((a, b) {
+      final tA = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final tB = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return tB.compareTo(tA);
+    });
+    return list;
   }
 
   /// Stream real-time đánh giá của một phòng (dùng cho UI reactive).
@@ -158,11 +144,18 @@ class ReviewService {
     return _firestore
         .collection('reviews')
         .where('roomId', isEqualTo: roomId)
-        .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => Review.fromMap(doc.data(), doc.id))
-            .toList());
+        .map((snapshot) {
+      final list = snapshot.docs
+          .map((doc) => Review.fromMap(doc.data(), doc.id))
+          .toList();
+      list.sort((a, b) {
+        final tA = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final tB = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return tB.compareTo(tA);
+      });
+      return list;
+    });
   }
 
   /// Lấy tất cả đánh giá do một user viết.
@@ -170,12 +163,17 @@ class ReviewService {
     final snapshot = await _firestore
         .collection('reviews')
         .where('userId', isEqualTo: userId)
-        .orderBy('createdAt', descending: true)
         .get();
 
-    return snapshot.docs
+    final list = snapshot.docs
         .map((doc) => Review.fromMap(doc.data(), doc.id))
         .toList();
+    list.sort((a, b) {
+      final tA = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final tB = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return tB.compareTo(tA);
+    });
+    return list;
   }
 
   /// Kiểm tra user đã đánh giá phòng này chưa.

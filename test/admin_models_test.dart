@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:room_finder_app/data/admin_service.dart';
+import 'package:room_finder_app/data/mock_data.dart';
 import 'package:room_finder_app/domain/models/app_user.dart';
 import 'package:room_finder_app/domain/models/chat_message.dart';
 import 'package:room_finder_app/domain/models/chat_session.dart';
@@ -117,6 +118,56 @@ void main() {
       expect(room.status, 'available');
       expect(room.rejectionReason, isNull);
       expect(room.moderatedBy, isNull);
+    });
+
+    test('Room VIP & expiration calculation', () {
+      final now = DateTime.now();
+      final room = Room(
+        roomId: 'room_vip',
+        ownerId: 'owner_99',
+        title: 'Phòng VIP Hoàng Gia',
+        description: 'Mô tả',
+        price: 5000000,
+        area: 35,
+        address: '123 Kim Mã',
+        district: 'Ba Đình',
+        images: [],
+        amenities: [],
+        roomType: 'Chung cư mini',
+        status: 'available',
+        createdAt: now,
+        expiredAt: now.add(const Duration(days: 10)),
+        vipType: 'gold',
+      );
+
+      expect(room.isVip, isTrue);
+      expect(room.vipType, 'gold');
+      expect(room.isExpired, isFalse);
+      expect(room.remainingDays, inInclusiveRange(9, 10));
+
+      final map = room.toMap();
+      expect(map['vipType'], 'gold');
+      expect(map['expiredAt'], isNotNull);
+
+      final fallbackMap = {
+        'ownerId': 'owner_1',
+        'title': 'Phòng thường',
+        'description': 'Mô tả',
+        'price': 2000000,
+        'area': 18,
+        'address': 'Đống Đa',
+        'district': 'Đống Đa',
+        'images': <String>[],
+        'amenities': <String>[],
+        'roomType': 'Phòng trọ',
+        'status': 'available',
+        'createdAt': now,
+      };
+      final fallbackRoom = Room.fromMap(fallbackMap, 'room_normal');
+      expect(fallbackRoom.isVip, isFalse);
+      expect(fallbackRoom.vipType, 'normal');
+      expect(fallbackRoom.expiredAt, isNotNull);
+      expect(fallbackRoom.remainingDays, inInclusiveRange(9, 10));
     });
 
     test('ChatSession and ChatMessage model tests', () {
@@ -237,6 +288,31 @@ void main() {
       expect(review.userAvatar, 'https://example.com/b.jpg');
       expect(review.rating, 4.5);
       expect(review.comment, contains('thoáng và sạch sẽ'));
+    });
+
+    test('Mock Rooms comprehensive dataset verification (>= 200 rooms, 3 images each, full fields)', () {
+      expect(mockRooms.length, greaterThanOrEqualTo(200));
+      for (final r in mockRooms) {
+        expect(r.roomId.isNotEmpty, isTrue);
+        expect(r.ownerId.isNotEmpty, isTrue);
+        expect(r.title.isNotEmpty, isTrue);
+        expect(r.description.isNotEmpty, isTrue);
+        expect(r.address.isNotEmpty, isTrue);
+        expect(r.district.isNotEmpty, isTrue);
+        expect(r.ward.isNotEmpty, isTrue);
+        expect(r.street.isNotEmpty, isTrue);
+        expect(r.price, greaterThan(0));
+        expect(r.area, greaterThan(0));
+        expect(r.deposit, greaterThan(0));
+        expect(r.electricityPrice, greaterThan(0));
+        expect(r.waterPrice, greaterThan(0));
+        expect(r.images.length, equals(3));
+        expect(r.amenities.isNotEmpty, isTrue);
+        expect(r.roomType.isNotEmpty, isTrue);
+        expect(r.status.isNotEmpty, isTrue);
+        expect(r.averageRating, equals(0.0));
+        expect(r.totalReviews, equals(0));
+      }
     });
   });
 }

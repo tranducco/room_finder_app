@@ -327,6 +327,22 @@ class _ProfileTabState extends State<ProfileTab> {
                         if (mounted) _loadStats();
                       },
                     ),
+                    const Divider(height: 1, indent: 56),
+                    _menuItem(
+                      icon: Icons.bolt_rounded,
+                      color: Colors.amber.shade800,
+                      label: 'Bảng giá Gói VIP (Đồng – Bạc – Vàng)',
+                      subtitle: 'Đẩy tin lên đầu, tiếp cận gấp 4 lần khách thuê',
+                      onTap: () => Navigator.pushNamed(context, '/packages'),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    _menuItem(
+                      icon: Icons.receipt_long_rounded,
+                      color: const Color(0xFF00897B),
+                      label: 'Quản lý gói & Lịch sử mua',
+                      subtitle: 'Theo dõi thời hạn gói và hóa đơn thanh toán',
+                      onTap: () => Navigator.pushNamed(context, '/my-packages'),
+                    ),
                   ]),
                   const SizedBox(height: 16),
 
@@ -926,8 +942,11 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                       ],
                     ),
                     const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 6,
                       children: [
                         OutlinedButton.icon(
                           onPressed: _showImageSourceDialog,
@@ -940,8 +959,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                             textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                           ),
                         ),
-                        if (_previewAvatar.isNotEmpty) ...[
-                          const SizedBox(width: 8),
+                        if (_previewAvatar.isNotEmpty)
                           TextButton.icon(
                             onPressed: () {
                               setState(() {
@@ -955,7 +973,6 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                               style: TextStyle(color: Colors.redAccent, fontSize: 12),
                             ),
                           ),
-                        ],
                       ],
                     ),
                   ],

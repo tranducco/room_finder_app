@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 
 import '../domain/models/package_order.dart';
@@ -12,13 +13,18 @@ class PackageService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // URL Cloud Functions endpoint (Sandbox / Development)
-  // Trong môi trường production, có thể cấu hình từ Firebase Remote Config hoặc file config
+  // Có thể truyền qua --dart-define=PAYMENT_API_URL=https://trotot-payment-server.onrender.com
+  // hoặc sửa trực tiếp _customPaymentServerUrl bên dưới sau khi deploy miễn phí lên Render.
+  static const String _envPaymentApiUrl = String.fromEnvironment('PAYMENT_API_URL');
+  static const String _customPaymentServerUrl = '';
   static const String _defaultFunctionsRegion = 'asia-southeast1';
   static const String _firebaseProjectId = 'phongtro-ai';
 
-  String get _functionsBaseUrl =>
-      'https://$_defaultFunctionsRegion-$_firebaseProjectId.cloudfunctions.net';
+  String get _functionsBaseUrl {
+    if (_envPaymentApiUrl.isNotEmpty) return _envPaymentApiUrl;
+    if (_customPaymentServerUrl.isNotEmpty) return _customPaymentServerUrl;
+    return 'https://$_defaultFunctionsRegion-$_firebaseProjectId.cloudfunctions.net';
+  }
 
   // =========================================================================
   // 1. LẤY DANH SÁCH BẢNG GIÁ GÓI ĐĂNG TIN
@@ -78,7 +84,8 @@ class PackageService {
         body: jsonEncode({
           'roomId': roomId,
           'packageId': packageId,
-          'returnUrl': returnUrl ?? 'trotot://payment-result',
+          'returnUrl': returnUrl ??
+              (kIsWeb ? '${Uri.base.origin}/#/payment-result' : 'trotot://payment-result'),
         }),
       );
 

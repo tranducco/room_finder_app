@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: trotot-payment-server
+    runtime: node
+    plan: free
+    rootDir: payment-server
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: MOMO_ENVIRONMENT
+        value: sandbox
+      - key: APP_BASE_URL
+        value: https://phongtro-ai.web.app
+      - key: SERVER_BASE_URL
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false

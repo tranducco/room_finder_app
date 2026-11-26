@@ -33,8 +33,8 @@ export function getMoMoConfig(): MoMoConfig {
 
   return {
     partnerCode: process.env.MOMO_PARTNER_CODE || "MOMO",
-    accessKey: process.env.MOMO_ACCESS_KEY || "klm05TvNBzhg7hY8",
-    secretKey: process.env.MOMO_SECRET_KEY || "at67qH6mk8w5Y1nAyMoYKMWACiEi2Aca",
+    accessKey: process.env.MOMO_ACCESS_KEY || "F8BBA842ECF85",
+    secretKey: process.env.MOMO_SECRET_KEY || "K951B6PE1waDMi640xX08PD3vg6EkVlz",
     endpoint: "https://test-payment.momo.vn/v2/gateway/api/create",
     queryEndpoint: "https://test-payment.momo.vn/v2/gateway/api/query",
     ipnUrl: process.env.MOMO_IPN_URL || `${serverBase}/momoIpnWebhook`,

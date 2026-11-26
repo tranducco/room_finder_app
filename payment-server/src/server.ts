@@ -165,11 +165,30 @@ app.post("/createMoMoPayment", async (req: Request, res: Response) => {
 
     const momoResponse = await fetch(config.endpoint, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent": "TroTot-PaymentServer/1.0",
+      },
       body: JSON.stringify(momoRequestBody),
     });
 
-    const momoResJson = (await momoResponse.json()) as any;
+    const momoRawText = await momoResponse.text();
+    let momoResJson: any;
+    try {
+      momoResJson = JSON.parse(momoRawText);
+    } catch {
+      console.error(`[MoMo] Non-JSON response (${momoResponse.status}):`, momoRawText.slice(0, 300));
+      await db.collection("package_orders").doc(orderId).update({
+        status: "failed",
+        note: `MoMo HTTP ${momoResponse.status} (non-JSON)`,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      res.status(502).json({
+        success: false,
+        message: `Cổng MoMo phản hồi không hợp lệ (HTTP ${momoResponse.status}).`,
+      });
+      return;
+    }
     console.log(`[MoMo] Response (${orderId}):`, {
       resultCode: momoResJson?.resultCode,
       message: momoResJson?.message,

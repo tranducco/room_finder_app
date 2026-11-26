@@ -16,7 +16,7 @@ class PackageService {
   // Có thể truyền qua --dart-define=PAYMENT_API_URL=https://trotot-payment-server.onrender.com
   // hoặc sửa trực tiếp _customPaymentServerUrl bên dưới sau khi deploy miễn phí lên Render.
   static const String _envPaymentApiUrl = String.fromEnvironment('PAYMENT_API_URL');
-  static const String _customPaymentServerUrl = '';
+  static const String _customPaymentServerUrl = 'https://room-finder-app-o3aq.onrender.com';
   static const String _defaultFunctionsRegion = 'asia-southeast1';
   static const String _firebaseProjectId = 'phongtro-ai';
 
@@ -89,7 +89,15 @@ class PackageService {
         }),
       );
 
-      final body = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      final rawBody = utf8.decode(response.bodyBytes);
+      Map<String, dynamic> body;
+      try {
+        body = jsonDecode(rawBody) as Map<String, dynamic>;
+      } catch (_) {
+        throw Exception(
+          'Máy chủ thanh toán đang khởi động hoặc bận (HTTP ${response.statusCode}). Vui lòng thử lại sau vài giây.',
+        );
+      }
 
       if (response.statusCode >= 200 && response.statusCode < 300 && body['success'] == true) {
         return body;
@@ -121,7 +129,15 @@ class PackageService {
         body: jsonEncode({'orderId': orderId}),
       );
 
-      final body = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      final rawBody = utf8.decode(response.bodyBytes);
+      Map<String, dynamic> body;
+      try {
+        body = jsonDecode(rawBody) as Map<String, dynamic>;
+      } catch (_) {
+        throw Exception(
+          'Máy chủ thanh toán đang khởi động hoặc bận (HTTP ${response.statusCode}). Vui lòng thử lại sau vài giây.',
+        );
+      }
       return body;
     } catch (_) {
       // Fallback kiểm tra trực tiếp Firestore doc

@@ -4,8 +4,20 @@ import cors from "cors";
 import * as admin from "firebase-admin";
 import * as crypto from "crypto";
 
-import { getMoMoConfig, PACKAGE_DEFINITIONS } from "./momo_config";
-import { createMoMoSignature, verifyMoMoSignature } from "./momo_crypto";
+import { getMoMoConfig, PACKAGE_DEFINITIONS } from "../../backend-shared/momo_config";
+import { createMoMoSignature, verifyMoMoSignature } from "../../backend-shared/momo_crypto";
+import {
+  callGeminiRestWithFallback,
+  GeminiContentPart,
+  getServerGeminiApiKey,
+  normalizeGeminiModel,
+} from "../../backend-shared/gemini_proxy";
+import {
+  activatePromotionForOrder,
+  isUserAdmin,
+  recalculateRoomRatingInternal,
+  sweepExpiredPromotions,
+} from "../../backend-shared/firestore_ops";
 
 // ============================================================================
 // 1. KHỞI TẠO FIREBASE ADMIN SDK
@@ -377,7 +389,7 @@ app.post("/momoIpnWebhook", async (req: Request, res: Response) => {
     });
 
     if (Number(resultCode) === 0) {
-      await activatePromotionForOrder(orderData, String(transId || ""));
+      await activatePromotionForOrder({ db, firestoreAdmin: admin.firestore, orderData, transId: String(transId || "") });
       console.log(`[MoMo IPN] Activated package ${orderData.packageId} for room ${orderData.roomId}`);
     } else {
       await orderRef.update({
@@ -423,7 +435,7 @@ app.post("/checkPaymentStatus", async (req: Request, res: Response) => {
     }
 
     const orderData = orderSnap.data()!;
-    if (orderData.userId !== decodedToken.uid && !(await isUserAdmin(decodedToken.uid, decodedToken))) {
+    if (orderData.userId !== decodedToken.uid && !(await isUserAdmin(db, decodedToken.uid, decodedToken))) {
       res.status(403).json({ success: false, message: "Bạn không có quyền xem đơn hàng này" });
       return;
     }
@@ -492,7 +504,7 @@ app.post("/checkPaymentStatus", async (req: Request, res: Response) => {
     console.log(`[MoMo Query] (${orderId}):`, momoQueryJson);
 
     if (momoQueryJson?.resultCode === 0) {
-      await activatePromotionForOrder(orderData, String(momoQueryJson.transId || ""));
+      await activatePromotionForOrder({ db, firestoreAdmin: admin.firestore, orderData, transId: String(momoQueryJson.transId || "") });
       res.status(200).json({
         success: true,
         status: "completed",
@@ -696,7 +708,7 @@ app.post("/momoSandboxConfirm", async (req: Request, res: Response) => {
     });
 
     if (isSuccess && sigOk) {
-      await activatePromotionForOrder(orderData, transId);
+      await activatePromotionForOrder({ db, firestoreAdmin: admin.firestore, orderData, transId });
       res.status(200).type("html").send(`<!DOCTYPE html>
 <html lang="vi">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Thanh toán thành công</title></head>
@@ -739,346 +751,6 @@ app.post("/momoSandboxConfirm", async (req: Request, res: Response) => {
 // ============================================================================
 // 5. KÍCH HOẠT GÓI ĐĂNG TIN VÀ TÍNH THỜI HẠN CHÍNH XÁC
 // ============================================================================
-async function activatePromotionForOrder(orderData: FirebaseFirestore.DocumentData, transId: string) {
-  const roomId = orderData.roomId;
-  const packageId = orderData.packageId as "bronze" | "silver" | "gold";
-  const packageDef = PACKAGE_DEFINITIONS[packageId] || PACKAGE_DEFINITIONS.bronze;
-  const durationDays = packageDef.durationDays;
-  const priority = packageDef.priority;
-
-  const roomRef = db.collection("rooms").doc(roomId);
-  const roomSnap = await roomRef.get();
-  if (!roomSnap.exists) return;
-
-  const roomData = roomSnap.data()!;
-  const now = new Date();
-  let startAt = now;
-  let expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
-
-  const currentExpiresAt = roomData.packageExpiresAt?.toDate?.() || null;
-  const currentPriority = (roomData.priority || 0) as number;
-
-  if (currentExpiresAt && currentExpiresAt > now && currentPriority > 0) {
-    if (currentPriority === priority) {
-      expiresAt = new Date(currentExpiresAt.getTime() + durationDays * 24 * 60 * 60 * 1000);
-    } else if (priority > currentPriority) {
-      const remainingMs = currentExpiresAt.getTime() - now.getTime();
-      expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000 + remainingMs);
-    } else {
-      expiresAt = new Date(currentExpiresAt.getTime() + durationDays * 24 * 60 * 60 * 1000);
-    }
-  }
-
-  const batch = db.batch();
-
-  batch.update(roomRef, {
-    packageType: packageId,
-    priority,
-    packageStartAt: admin.firestore.Timestamp.fromDate(startAt),
-    packageExpiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-    vipType: packageId,
-  });
-
-  batch.set(db.collection("room_promotions").doc(roomId), {
-    roomId,
-    ownerId: orderData.userId,
-    packageId,
-    packageName: packageDef.name,
-    priority,
-    status: "active",
-    startAt: admin.firestore.Timestamp.fromDate(startAt),
-    expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-    lastOrderId: orderData.orderId,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
-
-  batch.update(db.collection("package_orders").doc(orderData.orderId), {
-    status: "completed",
-    transactionId: transId,
-    paidAt: admin.firestore.FieldValue.serverTimestamp(),
-    startAt: admin.firestore.Timestamp.fromDate(startAt),
-    expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
-
-  const dateFormatted = `${expiresAt.getDate()}/${expiresAt.getMonth() + 1}/${expiresAt.getFullYear()}`;
-  batch.set(db.collection("notifications").doc(), {
-    recipientId: orderData.userId,
-    type: "package_activated",
-    title: `Kích hoạt ${packageDef.name} thành công! 🎉`,
-    body: `Phòng trọ "${orderData.roomTitle}" đã được nâng cấp lên ${packageDef.name} (Hạng ưu tiên ${priority}). Thời hạn sử dụng đến hết ngày ${dateFormatted}.`,
-    roomId,
-    orderId: orderData.orderId,
-    isRead: false,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
-
-  await batch.commit();
-}
-
-// ============================================================================
-// 6. HELPERS DÙNG CHUNG: PHÂN QUYỀN ADMIN, GEMINI PROXY & TÍNH RATING
-// ============================================================================
-async function isUserAdmin(
-  uid: string,
-  decodedToken?: admin.auth.DecodedIdToken
-): Promise<boolean> {
-  if (decodedToken?.role === "admin") return true;
-  try {
-    const userDoc = await db.collection("users").doc(uid).get();
-    return userDoc.exists && userDoc.data()?.role === "admin";
-  } catch {
-    return false;
-  }
-}
-
-function normalizeGeminiModel(rawModel?: string): string {
-  if (!rawModel || !rawModel.trim()) {
-    return "gemini-flash-latest";
-  }
-  const s = rawModel.trim().toLowerCase();
-  if (
-    s.includes("flash-lite-latest") ||
-    (s.includes("latest") && s.includes("lite")) ||
-    s.includes("3.1")
-  ) {
-    return "gemini-flash-lite-latest";
-  }
-  if (
-    s === "gemini-flash-latest" ||
-    s === "latest" ||
-    s === "flash" ||
-    s === "gemini-flash"
-  ) {
-    return "gemini-flash-latest";
-  }
-  if (s.includes("3.8")) {
-    return "gemini-3.8-flash";
-  }
-  if (s.includes("3.6")) {
-    return "gemini-3.6-flash";
-  }
-  if (s.includes("3.5")) {
-    return s.includes("lite") ? "gemini-3.5-flash-lite" : "gemini-3.5-flash";
-  }
-  if (s.includes("2.5")) {
-    return s.includes("lite") ? "gemini-2.5-flash-lite" : "gemini-2.5-flash";
-  }
-  if (s.startsWith("gemini-")) {
-    if (s.includes("1.5") || s.includes("2.0")) {
-      return "gemini-flash-latest";
-    }
-    return s;
-  }
-  return "gemini-flash-latest";
-}
-
-async function getServerGeminiApiKey(): Promise<{
-  apiKey: string;
-  source: "env" | "firestore_secret" | "none";
-}> {
-  const envKey = process.env.GEMINI_API_KEY?.trim();
-  if (envKey) {
-    return { apiKey: envKey, source: "env" };
-  }
-  try {
-    const secretDoc = await db.collection("system_secrets").doc("ai_config").get();
-    const fsKey = (secretDoc.data()?.apiKey as string | undefined)?.trim();
-    if (fsKey) {
-      return { apiKey: fsKey, source: "firestore_secret" };
-    }
-  } catch (err) {
-    console.warn("[AI] Unable to read system_secrets/ai_config:", err);
-  }
-  return { apiKey: "", source: "none" };
-}
-
-interface GeminiContentPart {
-  role: "user" | "model";
-  parts: Array<{ text: string }>;
-}
-
-async function invokeSingleGeminiModel(params: {
-  apiKey: string;
-  model: string;
-  contents: GeminiContentPart[];
-  systemInstruction?: string;
-  temperature?: number;
-  responseMimeType?: string;
-  timeoutMs: number;
-}): Promise<{ ok: boolean; status: number; text?: string; error?: string }> {
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-    params.model
-  )}:generateContent?key=${encodeURIComponent(params.apiKey)}`;
-
-  const payload: Record<string, any> = {
-    contents: params.contents,
-    generationConfig: {
-      temperature: typeof params.temperature === "number" ? params.temperature : 0.5,
-      ...(params.responseMimeType ? { responseMimeType: params.responseMimeType } : {}),
-    },
-  };
-
-  if (params.systemInstruction && params.systemInstruction.trim()) {
-    payload.systemInstruction = {
-      parts: [{ text: params.systemInstruction.trim() }],
-    };
-  }
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), params.timeoutMs);
-
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    const rawText = await response.text();
-    let json: any = null;
-    try {
-      json = JSON.parse(rawText);
-    } catch {
-      return {
-        ok: false,
-        status: response.status,
-        error: `Non-JSON response (HTTP ${response.status})`,
-      };
-    }
-
-    if (!response.ok) {
-      const msg = json?.error?.message || `HTTP ${response.status}`;
-      return { ok: false, status: response.status, error: msg };
-    }
-
-    const parts = json?.candidates?.[0]?.content?.parts;
-    const text = Array.isArray(parts)
-      ? parts
-          .map((p: any) => (typeof p?.text === "string" ? p.text : ""))
-          .join("")
-          .trim()
-      : "";
-
-    if (!text) {
-      return { ok: false, status: response.status, error: "Empty candidate response" };
-    }
-    return { ok: true, status: response.status, text };
-  } catch (err: any) {
-    return {
-      ok: false,
-      status: 0,
-      error: err?.name === "AbortError" ? "Request timeout" : err?.message || "Fetch error",
-    };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function callGeminiRestWithFallback(params: {
-  apiKey: string;
-  modelName?: string;
-  contents: GeminiContentPart[];
-  systemInstruction?: string;
-  temperature?: number;
-  responseMimeType?: string;
-  timeoutMs?: number;
-}): Promise<{ text: string; modelUsed: string }> {
-  const timeoutMs = params.timeoutMs ?? 8000;
-  const primary = normalizeGeminiModel(params.modelName);
-  const baseCandidates = [
-    primary,
-    "gemini-flash-lite-latest",
-    "gemini-flash-latest",
-    "gemini-3.5-flash-lite",
-    "gemini-3.8-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-2.5-flash",
-  ];
-  const candidates = Array.from(new Set(baseCandidates));
-
-  let lastError = "Không thể kết nối đến Google Gemini API";
-  let hadNotFound = false;
-
-  for (const model of candidates) {
-    const result = await invokeSingleGeminiModel({
-      apiKey: params.apiKey,
-      model,
-      contents: params.contents,
-      systemInstruction: params.systemInstruction,
-      temperature: params.temperature,
-      responseMimeType: params.responseMimeType,
-      timeoutMs,
-    });
-    if (result.ok && result.text) {
-      return { text: result.text, modelUsed: model };
-    }
-    if (result.status === 404 || (result.error && result.error.toLowerCase().includes("not found"))) {
-      hadNotFound = true;
-    }
-    lastError = `[${model}] ${result.error || "Unknown error"}`;
-  }
-
-  // Fallback động: hỏi danh sách model đang mở cho key nếu toàn bộ model tĩnh báo 404
-  if (hadNotFound) {
-    try {
-      const listRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(
-          params.apiKey
-        )}`
-      );
-      if (listRes.ok) {
-        const listJson = (await listRes.json()) as any;
-        const models: any[] = Array.isArray(listJson?.models) ? listJson.models : [];
-        const matched = models.find((m) => {
-          const name = String(m?.name || "").toLowerCase();
-          const methods: string[] = Array.isArray(m?.supportedGenerationMethods)
-            ? m.supportedGenerationMethods
-            : [];
-          return name.includes("flash") && methods.includes("generateContent");
-        });
-        if (matched?.name) {
-          const discoveredModel = String(matched.name).replace(/^models\//, "");
-          const retry = await invokeSingleGeminiModel({
-            apiKey: params.apiKey,
-            model: discoveredModel,
-            contents: params.contents,
-            systemInstruction: params.systemInstruction,
-            temperature: params.temperature,
-            responseMimeType: params.responseMimeType,
-            timeoutMs,
-          });
-          if (retry.ok && retry.text) {
-            return { text: retry.text, modelUsed: discoveredModel };
-          }
-          lastError = `[${discoveredModel}] ${retry.error || "Unknown error"}`;
-        }
-      }
-    } catch {
-      // ignore discovery error
-    }
-  }
-
-  throw new Error(lastError);
-}
-
-async function recalculateRoomRatingInternal(
-  roomId: string
-): Promise<{ averageRating: number; totalReviews: number }> {
-  const snap = await db.collection("reviews").where("roomId", "==", roomId).get();
-  const totalReviews = snap.size;
-  let sum = 0;
-  for (const doc of snap.docs) {
-    sum += Number(doc.data()?.rating || 0);
-  }
-  const averageRating = totalReviews > 0 ? Number((sum / totalReviews).toFixed(1)) : 0;
-  await db.collection("rooms").doc(roomId).update({
-    averageRating,
-    totalReviews,
-  });
-  return { averageRating, totalReviews };
-}
-
 // ============================================================================
 // 7. GEMINI AI PROXY ENDPOINTS (POST /aiChatProxy, POST /testGeminiConnection, GET /admin/aiKeyStatus)
 // ============================================================================
@@ -1099,7 +771,7 @@ app.post("/aiChatProxy", async (req: Request, res: Response) => {
       return;
     }
 
-    const { apiKey, source } = await getServerGeminiApiKey();
+    const { apiKey, source } = await getServerGeminiApiKey(db, (err) => console.warn("[AI] Unable to read system_secrets/ai_config:", err));
     if (source === "none" || !apiKey) {
       res.status(503).json({
         success: false,
@@ -1155,7 +827,7 @@ app.post("/testGeminiConnection", async (req: Request, res: Response) => {
 
     const idToken = authHeader.split("Bearer ")[1];
     const decodedToken = await admin.auth().verifyIdToken(idToken);
-    if (!(await isUserAdmin(decodedToken.uid, decodedToken))) {
+    if (!(await isUserAdmin(db, decodedToken.uid, decodedToken))) {
       res.status(403).json({ success: false, message: "Chỉ Admin mới có quyền kiểm tra kết nối AI" });
       return;
     }
@@ -1165,7 +837,7 @@ app.post("/testGeminiConnection", async (req: Request, res: Response) => {
     let keySource: "request" | "env" | "firestore_secret" | "none" = effectiveKey ? "request" : "none";
 
     if (!effectiveKey) {
-      const serverKey = await getServerGeminiApiKey();
+      const serverKey = await getServerGeminiApiKey(db, (err) => console.warn("[AI] Unable to read system_secrets/ai_config:", err));
       effectiveKey = serverKey.apiKey;
       keySource = serverKey.source;
     }
@@ -1223,12 +895,12 @@ app.get("/admin/aiKeyStatus", async (req: Request, res: Response) => {
 
     const idToken = authHeader.split("Bearer ")[1];
     const decodedToken = await admin.auth().verifyIdToken(idToken);
-    if (!(await isUserAdmin(decodedToken.uid, decodedToken))) {
+    if (!(await isUserAdmin(db, decodedToken.uid, decodedToken))) {
       res.status(403).json({ success: false, message: "Forbidden" });
       return;
     }
 
-    const { source } = await getServerGeminiApiKey();
+    const { source } = await getServerGeminiApiKey(db, (err) => console.warn("[AI] Unable to read system_secrets/ai_config:", err));
     res.status(200).json({
       success: true,
       configured: source !== "none",
@@ -1265,7 +937,7 @@ app.post("/recalculateRoomRating", async (req: Request, res: Response) => {
       return;
     }
 
-    const stats = await recalculateRoomRatingInternal(roomId.trim());
+    const stats = await recalculateRoomRatingInternal(db, roomId.trim());
     res.status(200).json({
       success: true,
       averageRating: stats.averageRating,
@@ -1282,56 +954,6 @@ const PORT = Number(process.env.PORT || 3000);
 // ============================================================================
 // 9. QUÉT TỰ ĐỘNG GÓI ĐĂNG TIN ĐÃ HẾT HẠN (ĐỒNG BỘ VỚI CLOUD FUNCTIONS)
 // ============================================================================
-async function sweepExpiredPromotions(): Promise<{ expiredCount: number }> {
-  const now = admin.firestore.Timestamp.now();
-  const expiredPromosSnap = await db
-    .collection("room_promotions")
-    .where("status", "==", "active")
-    .where("expiresAt", "<=", now)
-    .get();
-
-  if (expiredPromosSnap.empty) {
-    return { expiredCount: 0 };
-  }
-
-  const batch = db.batch();
-  let expiredCount = 0;
-
-  for (const doc of expiredPromosSnap.docs) {
-    const promo = doc.data();
-    const roomId = promo.roomId as string | undefined;
-    expiredCount += 1;
-
-    batch.update(doc.ref, {
-      status: "expired",
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    if (roomId) {
-      batch.update(db.collection("rooms").doc(roomId), {
-        priority: 0,
-        packageType: "normal",
-        vipType: "normal",
-      });
-
-      if (promo.ownerId) {
-        batch.set(db.collection("notifications").doc(), {
-          recipientId: promo.ownerId,
-          type: "package_expired",
-          title: "Gói đăng tin đã hết hạn ⏰",
-          body: `Gói ${promo.packageName} của phòng trọ đã hết hạn sử dụng. Tin đăng đã tự động chuyển về trạng thái tin thường. Bạn có thể gia hạn bất kỳ lúc nào để tiếp tục nhận ưu tiên.`,
-          roomId,
-          isRead: false,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-      }
-    }
-  }
-
-  await batch.commit();
-  return { expiredCount };
-}
-
 app.post("/checkExpiredPromotions", async (req: Request, res: Response) => {
   try {
     const cronSecret = process.env.CRON_SECRET?.trim();
@@ -1346,14 +968,14 @@ app.post("/checkExpiredPromotions", async (req: Request, res: Response) => {
       }
       const idToken = authHeader.split("Bearer ")[1];
       const decodedToken = await admin.auth().verifyIdToken(idToken);
-      authorized = await isUserAdmin(decodedToken.uid, decodedToken);
+      authorized = await isUserAdmin(db, decodedToken.uid, decodedToken);
       if (!authorized) {
         res.status(403).json({ success: false, message: "Forbidden" });
         return;
       }
     }
 
-    const result = await sweepExpiredPromotions();
+    const result = await sweepExpiredPromotions({ db, firestoreAdmin: admin.firestore });
     res.status(200).json({ success: true, expiredCount: result.expiredCount });
   } catch (error: any) {
     console.error("[Promotions] Error in checkExpiredPromotions:", error);
@@ -1366,7 +988,7 @@ app.listen(PORT, () => {
 
   const runSweepSafely = async () => {
     try {
-      const { expiredCount } = await sweepExpiredPromotions();
+      const { expiredCount } = await sweepExpiredPromotions({ db, firestoreAdmin: admin.firestore });
       if (expiredCount > 0) {
         console.log(`[Promotions] Expired ${expiredCount} promotion(s)`);
       }

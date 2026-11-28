@@ -5,8 +5,31 @@ import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
 import * as crypto from "crypto";
 
-import { getMoMoConfig, PACKAGE_DEFINITIONS } from "./momo_config";
-import { createMoMoSignature, verifyMoMoSignature } from "./momo_crypto";
+import {
+  getMoMoConfig as getSharedMoMoConfig,
+  PACKAGE_DEFINITIONS,
+} from "../../backend-shared/momo_config";
+import { createMoMoSignature, verifyMoMoSignature } from "../../backend-shared/momo_crypto";
+import {
+  callGeminiRestWithFallback,
+  GeminiContentPart,
+  getServerGeminiApiKey,
+  normalizeGeminiModel,
+} from "../../backend-shared/gemini_proxy";
+import {
+  activatePromotionForOrder,
+  isUserAdmin,
+  recalculateRoomRatingInternal,
+  sweepExpiredPromotions,
+} from "../../backend-shared/firestore_ops";
+
+const getMoMoConfig = () =>
+  getSharedMoMoConfig({
+    defaultIpnUrl: "https://asia-southeast1-phongtro-ai.cloudfunctions.net/momoIpnWebhook",
+    defaultSandboxRedirectUrl: "https://asia-southeast1-phongtro-ai.cloudfunctions.net/momoRedirect",
+    defaultProdRedirectUrl: "https://trotot.web.app/#/payment-result",
+    allowSandboxEnvOverrides: false,
+  });
 
 // Khởi tạo Firebase Admin SDK
 if (!admin.apps.length) {
@@ -418,7 +441,7 @@ export const momoIpnWebhook = onRequest(
       // 6. Xử lý kết quả giao dịch
       if (Number(resultCode) === 0) {
         // ─── THANH TOÁN THÀNH CÔNG: TỰ ĐỘNG KÍCH HOẠT GÓI ───
-        await activatePromotionForOrder(orderData, String(transId || ""));
+        await activatePromotionForOrder({ db, firestoreAdmin: admin.firestore, orderData, transId: String(transId || ""), onInfo: (m) => logger.info(m) });
         logger.info(`Kích hoạt thành công gói ${orderData.packageId} cho phòng ${orderData.roomId}!`);
       } else {
         // ─── THANH TOÁN THẤT BẠI HOẶC BỊ HỦY ───
@@ -442,98 +465,6 @@ export const momoIpnWebhook = onRequest(
 // ============================================================================
 // 4. HÀM NỘI BỘ: KÍCH HOẠT GÓI ĐĂNG TIN VÀ TÍNH TOÁN THỜI HẠN CHÍNH XÁC
 // ============================================================================
-async function activatePromotionForOrder(orderData: FirebaseFirestore.DocumentData, transId: string) {
-  const roomId = orderData.roomId;
-  const packageId = orderData.packageId as "bronze" | "silver" | "gold";
-  const packageDef = PACKAGE_DEFINITIONS[packageId] || PACKAGE_DEFINITIONS.bronze;
-  const durationDays = packageDef.durationDays;
-  const priority = packageDef.priority;
-
-  const roomRef = db.collection("rooms").doc(roomId);
-  const roomSnap = await roomRef.get();
-  if (!roomSnap.exists) return;
-
-  const roomData = roomSnap.data()!;
-  const now = new Date();
-  let startAt = now;
-  let expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
-
-  // Xử lý chính sách gia hạn / nâng cấp nếu phòng đang có gói còn thời hạn
-  const currentExpiresAt = roomData.packageExpiresAt?.toDate?.() || null;
-  const currentPriority = (roomData.priority || 0) as number;
-
-  if (currentExpiresAt && currentExpiresAt > now && currentPriority > 0) {
-    if (currentPriority === priority) {
-      // Cùng hạng gói: Cộng dồn thời hạn tiếp theo
-      startAt = now;
-      expiresAt = new Date(currentExpiresAt.getTime() + durationDays * 24 * 60 * 60 * 1000);
-      logger.info(`Gia hạn gói cùng hạng ${packageId}: Hạn mới = ${expiresAt.toISOString()}`);
-    } else if (priority > currentPriority) {
-      // Nâng cấp lên gói cao hơn (VD: Đồng -> Vàng): Ưu tiên hạng mới ngay lập tức
-      // Hạn mới = Bây giờ + thời hạn gói mới + số ngày dư của gói cũ
-      const remainingMs = currentExpiresAt.getTime() - now.getTime();
-      expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000 + remainingMs);
-      logger.info(`Nâng cấp gói lên hạng cao hơn ${packageId}: Hạn mới = ${expiresAt.toISOString()}`);
-    } else {
-      // Gói mới có priority thấp hơn gói đang còn hạn: Nối tiếp sau khi gói hiện tại hết hạn
-      expiresAt = new Date(currentExpiresAt.getTime() + durationDays * 24 * 60 * 60 * 1000);
-    }
-  }
-
-  const batch = db.batch();
-
-  // 1. Cập nhật phòng trọ
-  batch.update(roomRef, {
-    packageType: packageId,
-    priority: priority,
-    packageStartAt: admin.firestore.Timestamp.fromDate(startAt),
-    packageExpiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-    vipType: packageId,
-  });
-
-  // 2. Cập nhật / tạo bản ghi room_promotions
-  const promotionRef = db.collection("room_promotions").doc(roomId);
-  batch.set(promotionRef, {
-    roomId: roomId,
-    ownerId: orderData.userId,
-    packageId: packageId,
-    packageName: packageDef.name,
-    priority: priority,
-    status: "active",
-    startAt: admin.firestore.Timestamp.fromDate(startAt),
-    expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-    lastOrderId: orderData.orderId,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
-
-  // 3. Cập nhật đơn hàng thành 'completed'
-  const orderRef = db.collection("package_orders").doc(orderData.orderId);
-  batch.update(orderRef, {
-    status: "completed",
-    transactionId: transId,
-    paidAt: admin.firestore.FieldValue.serverTimestamp(),
-    startAt: admin.firestore.Timestamp.fromDate(startAt),
-    expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
-
-  // 4. Gửi thông báo chúc mừng tới người dùng
-  const notifRef = db.collection("notifications").doc();
-  const dateFormatted = `${expiresAt.getDate()}/${expiresAt.getMonth() + 1}/${expiresAt.getFullYear()}`;
-  batch.set(notifRef, {
-    recipientId: orderData.userId,
-    type: "package_activated",
-    title: `Kích hoạt ${packageDef.name} thành công! 🎉`,
-    body: `Phòng trọ "${orderData.roomTitle}" đã được nâng cấp lên ${packageDef.name} (Hạng ưu tiên ${priority}). Thời hạn sử dụng đến hết ngày ${dateFormatted}.`,
-    roomId: roomId,
-    orderId: orderData.orderId,
-    isRead: false,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
-
-  await batch.commit();
-}
-
 // ============================================================================
 // 5. TRUY VẤN VÀ ĐỐI SOÁT TRẠNG THÁI GIAO DỊCH (checkPaymentStatus)
 // ============================================================================
@@ -576,7 +507,7 @@ export const checkPaymentStatus = onRequest(
       const orderData = orderSnap.data()!;
 
       // Kiểm tra quyền: chỉ người tạo đơn hàng hoặc admin mới được truy vấn
-      if (orderData.userId !== decodedToken.uid && !(await isUserAdmin(decodedToken.uid, decodedToken))) {
+      if (orderData.userId !== decodedToken.uid && !(await isUserAdmin(db, decodedToken.uid, decodedToken))) {
         res.status(403).json({ success: false, message: "Bạn không có quyền xem đơn hàng này" });
         return;
       }
@@ -640,7 +571,7 @@ export const checkPaymentStatus = onRequest(
 
       if (momoQueryJson?.resultCode === 0) {
         // MoMo xác nhận đã thanh toán thành công nhưng có thể IPN bị trễ -> Kích hoạt ngay
-        await activatePromotionForOrder(orderData, String(momoQueryJson.transId || ""));
+        await activatePromotionForOrder({ db, firestoreAdmin: admin.firestore, orderData, transId: String(momoQueryJson.transId || ""), onInfo: (m) => logger.info(m) });
         res.status(200).json({
           success: true,
           status: "completed",
@@ -674,61 +605,17 @@ export const checkExpiredPromotions = onSchedule(
   },
   async () => {
     logger.info("Bắt đầu quét tự động các gói đăng tin đã hết hạn...");
-    const now = admin.firestore.Timestamp.now();
-
     try {
-      const expiredPromosSnap = await db
-        .collection("room_promotions")
-        .where("status", "==", "active")
-        .where("expiresAt", "<=", now)
-        .get();
-
-      if (expiredPromosSnap.empty) {
+      const { expiredCount } = await sweepExpiredPromotions({
+        db,
+        firestoreAdmin: admin.firestore,
+        onInfo: (m) => logger.info(m),
+      });
+      if (expiredCount === 0) {
         logger.info("Không có gói nào cần thu hồi hạn.");
-        return;
+      } else {
+        logger.info("Đã hoàn tất thu hồi các gói hết hạn thành công.");
       }
-
-      logger.info(`Phát hiện ${expiredPromosSnap.docs.length} gói đã hết hạn. Đang hoàn về tin thường...`);
-
-      const batch = db.batch();
-
-      for (const doc of expiredPromosSnap.docs) {
-        const promo = doc.data();
-        const roomId = promo.roomId;
-
-        // 1. Cập nhật trạng thái promotion thành expired
-        batch.update(doc.ref, {
-          status: "expired",
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        // 2. Chuyển phòng về tin thường (priority = 0, packageType = 'normal')
-        if (roomId) {
-          const roomRef = db.collection("rooms").doc(roomId);
-          batch.update(roomRef, {
-            priority: 0,
-            packageType: "normal",
-            vipType: "normal",
-          });
-
-          // 3. Thông báo cho chủ phòng
-          if (promo.ownerId) {
-            const notifRef = db.collection("notifications").doc();
-            batch.set(notifRef, {
-              recipientId: promo.ownerId,
-              type: "package_expired",
-              title: "Gói đăng tin đã hết hạn ⏰",
-              body: `Gói ${promo.packageName} của phòng trọ đã hết hạn sử dụng. Tin đăng đã tự động chuyển về trạng thái tin thường. Bạn có thể gia hạn bất kỳ lúc nào để tiếp tục nhận ưu tiên.`,
-              roomId: roomId,
-              isRead: false,
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-          }
-        }
-      }
-
-      await batch.commit();
-      logger.info("Đã hoàn tất thu hồi các gói hết hạn thành công.");
     } catch (error) {
       logger.error("Lỗi khi quét gói hết hạn:", error);
     }
@@ -738,266 +625,6 @@ export const checkExpiredPromotions = onSchedule(
 // ============================================================================
 // 7. HELPERS DÙNG CHUNG & TỰ ĐỘNG CẬP NHẬT RATING PHÍA SERVER
 // ============================================================================
-async function isUserAdmin(
-  uid: string,
-  decodedToken?: admin.auth.DecodedIdToken
-): Promise<boolean> {
-  if (decodedToken?.role === "admin") return true;
-  try {
-    const userDoc = await db.collection("users").doc(uid).get();
-    return userDoc.exists && userDoc.data()?.role === "admin";
-  } catch {
-    return false;
-  }
-}
-
-function normalizeGeminiModel(rawModel?: string): string {
-  if (!rawModel || !rawModel.trim()) {
-    return "gemini-flash-latest";
-  }
-  const s = rawModel.trim().toLowerCase();
-  if (
-    s.includes("flash-lite-latest") ||
-    (s.includes("latest") && s.includes("lite")) ||
-    s.includes("3.1")
-  ) {
-    return "gemini-flash-lite-latest";
-  }
-  if (
-    s === "gemini-flash-latest" ||
-    s === "latest" ||
-    s === "flash" ||
-    s === "gemini-flash"
-  ) {
-    return "gemini-flash-latest";
-  }
-  if (s.includes("3.8")) {
-    return "gemini-3.8-flash";
-  }
-  if (s.includes("3.6")) {
-    return "gemini-3.6-flash";
-  }
-  if (s.includes("3.5")) {
-    return s.includes("lite") ? "gemini-3.5-flash-lite" : "gemini-3.5-flash";
-  }
-  if (s.includes("2.5")) {
-    return s.includes("lite") ? "gemini-2.5-flash-lite" : "gemini-2.5-flash";
-  }
-  if (s.startsWith("gemini-")) {
-    if (s.includes("1.5") || s.includes("2.0")) {
-      return "gemini-flash-latest";
-    }
-    return s;
-  }
-  return "gemini-flash-latest";
-}
-
-async function getServerGeminiApiKey(): Promise<{
-  apiKey: string;
-  source: "env" | "firestore_secret" | "none";
-}> {
-  const envKey = process.env.GEMINI_API_KEY?.trim();
-  if (envKey) {
-    return { apiKey: envKey, source: "env" };
-  }
-  try {
-    const secretDoc = await db.collection("system_secrets").doc("ai_config").get();
-    const fsKey = (secretDoc.data()?.apiKey as string | undefined)?.trim();
-    if (fsKey) {
-      return { apiKey: fsKey, source: "firestore_secret" };
-    }
-  } catch (err) {
-    logger.warn("Unable to read system_secrets/ai_config:", err);
-  }
-  return { apiKey: "", source: "none" };
-}
-
-interface GeminiContentPart {
-  role: "user" | "model";
-  parts: Array<{ text: string }>;
-}
-
-async function invokeSingleGeminiModel(params: {
-  apiKey: string;
-  model: string;
-  contents: GeminiContentPart[];
-  systemInstruction?: string;
-  temperature?: number;
-  responseMimeType?: string;
-  timeoutMs: number;
-}): Promise<{ ok: boolean; status: number; text?: string; error?: string }> {
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-    params.model
-  )}:generateContent?key=${encodeURIComponent(params.apiKey)}`;
-
-  const payload: Record<string, any> = {
-    contents: params.contents,
-    generationConfig: {
-      temperature: typeof params.temperature === "number" ? params.temperature : 0.5,
-      ...(params.responseMimeType ? { responseMimeType: params.responseMimeType } : {}),
-    },
-  };
-
-  if (params.systemInstruction && params.systemInstruction.trim()) {
-    payload.systemInstruction = {
-      parts: [{ text: params.systemInstruction.trim() }],
-    };
-  }
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), params.timeoutMs);
-
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    const rawText = await response.text();
-    let json: any = null;
-    try {
-      json = JSON.parse(rawText);
-    } catch {
-      return {
-        ok: false,
-        status: response.status,
-        error: `Non-JSON response (HTTP ${response.status})`,
-      };
-    }
-
-    if (!response.ok) {
-      const msg = json?.error?.message || `HTTP ${response.status}`;
-      return { ok: false, status: response.status, error: msg };
-    }
-
-    const parts = json?.candidates?.[0]?.content?.parts;
-    const text = Array.isArray(parts)
-      ? parts
-          .map((p: any) => (typeof p?.text === "string" ? p.text : ""))
-          .join("")
-          .trim()
-      : "";
-
-    if (!text) {
-      return { ok: false, status: response.status, error: "Empty candidate response" };
-    }
-    return { ok: true, status: response.status, text };
-  } catch (err: any) {
-    return {
-      ok: false,
-      status: 0,
-      error: err?.name === "AbortError" ? "Request timeout" : err?.message || "Fetch error",
-    };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function callGeminiRestWithFallback(params: {
-  apiKey: string;
-  modelName?: string;
-  contents: GeminiContentPart[];
-  systemInstruction?: string;
-  temperature?: number;
-  responseMimeType?: string;
-  timeoutMs?: number;
-}): Promise<{ text: string; modelUsed: string }> {
-  const timeoutMs = params.timeoutMs ?? 8000;
-  const primary = normalizeGeminiModel(params.modelName);
-  const candidates = Array.from(
-    new Set([
-      primary,
-      "gemini-flash-lite-latest",
-      "gemini-flash-latest",
-      "gemini-3.5-flash-lite",
-      "gemini-3.8-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-2.5-flash",
-    ])
-  );
-
-  let lastError = "Không thể kết nối đến Google Gemini API";
-  let hadNotFound = false;
-
-  for (const model of candidates) {
-    const result = await invokeSingleGeminiModel({
-      apiKey: params.apiKey,
-      model,
-      contents: params.contents,
-      systemInstruction: params.systemInstruction,
-      temperature: params.temperature,
-      responseMimeType: params.responseMimeType,
-      timeoutMs,
-    });
-    if (result.ok && result.text) {
-      return { text: result.text, modelUsed: model };
-    }
-    if (result.status === 404 || (result.error && result.error.toLowerCase().includes("not found"))) {
-      hadNotFound = true;
-    }
-    lastError = `[${model}] ${result.error || "Unknown error"}`;
-  }
-
-  if (hadNotFound) {
-    try {
-      const listRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(
-          params.apiKey
-        )}`
-      );
-      if (listRes.ok) {
-        const listJson = (await listRes.json()) as any;
-        const models: any[] = Array.isArray(listJson?.models) ? listJson.models : [];
-        const matched = models.find((m) => {
-          const name = String(m?.name || "").toLowerCase();
-          const methods: string[] = Array.isArray(m?.supportedGenerationMethods)
-            ? m.supportedGenerationMethods
-            : [];
-          return name.includes("flash") && methods.includes("generateContent");
-        });
-        if (matched?.name) {
-          const discoveredModel = String(matched.name).replace(/^models\//, "");
-          const retry = await invokeSingleGeminiModel({
-            apiKey: params.apiKey,
-            model: discoveredModel,
-            contents: params.contents,
-            systemInstruction: params.systemInstruction,
-            temperature: params.temperature,
-            responseMimeType: params.responseMimeType,
-            timeoutMs,
-          });
-          if (retry.ok && retry.text) {
-            return { text: retry.text, modelUsed: discoveredModel };
-          }
-          lastError = `[${discoveredModel}] ${retry.error || "Unknown error"}`;
-        }
-      }
-    } catch {
-      // ignore discovery error
-    }
-  }
-
-  throw new Error(lastError);
-}
-
-async function recalculateRoomRatingInternal(
-  roomId: string
-): Promise<{ averageRating: number; totalReviews: number }> {
-  const snap = await db.collection("reviews").where("roomId", "==", roomId).get();
-  const totalReviews = snap.size;
-  let sum = 0;
-  for (const doc of snap.docs) {
-    sum += Number(doc.data()?.rating || 0);
-  }
-  const averageRating = totalReviews > 0 ? Number((sum / totalReviews).toFixed(1)) : 0;
-  await db.collection("rooms").doc(roomId).update({
-    averageRating,
-    totalReviews,
-  });
-  return { averageRating, totalReviews };
-}
-
 export const onReviewCreatedRecalculateRating = onDocumentCreated(
   {
     document: "reviews/{reviewId}",
@@ -1008,7 +635,7 @@ export const onReviewCreatedRecalculateRating = onDocumentCreated(
   async (event) => {
     const roomId = event.data?.data()?.roomId;
     if (roomId && typeof roomId === "string" && roomId.trim()) {
-      await recalculateRoomRatingInternal(roomId.trim());
+      await recalculateRoomRatingInternal(db, roomId.trim());
     }
   }
 );
@@ -1023,7 +650,7 @@ export const onReviewDeletedRecalculateRating = onDocumentDeleted(
   async (event) => {
     const roomId = event.data?.data()?.roomId;
     if (roomId && typeof roomId === "string" && roomId.trim()) {
-      await recalculateRoomRatingInternal(roomId.trim());
+      await recalculateRoomRatingInternal(db, roomId.trim());
     }
   }
 );
@@ -1060,7 +687,7 @@ export const aiChatProxy = onRequest(
         return;
       }
 
-      const { apiKey, source } = await getServerGeminiApiKey();
+      const { apiKey, source } = await getServerGeminiApiKey(db, (err) => logger.warn("Unable to read system_secrets/ai_config:", err));
       if (source === "none" || !apiKey) {
         res.status(503).json({
           success: false,
@@ -1129,7 +756,7 @@ export const testGeminiConnection = onRequest(
 
       const idToken = authHeader.split("Bearer ")[1];
       const decodedToken = await admin.auth().verifyIdToken(idToken);
-      if (!(await isUserAdmin(decodedToken.uid, decodedToken))) {
+      if (!(await isUserAdmin(db, decodedToken.uid, decodedToken))) {
         res.status(403).json({ success: false, message: "Chỉ Admin mới có quyền kiểm tra kết nối AI" });
         return;
       }
@@ -1139,7 +766,7 @@ export const testGeminiConnection = onRequest(
       let keySource: "request" | "env" | "firestore_secret" | "none" = effectiveKey ? "request" : "none";
 
       if (!effectiveKey) {
-        const serverKey = await getServerGeminiApiKey();
+        const serverKey = await getServerGeminiApiKey(db, (err) => logger.warn("Unable to read system_secrets/ai_config:", err));
         effectiveKey = serverKey.apiKey;
         keySource = serverKey.source;
       }
@@ -1223,7 +850,7 @@ export const recalculateRoomRating = onRequest(
         return;
       }
 
-      const stats = await recalculateRoomRatingInternal(roomId.trim());
+      const stats = await recalculateRoomRatingInternal(db, roomId.trim());
       res.status(200).json({
         success: true,
         averageRating: stats.averageRating,

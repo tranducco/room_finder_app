@@ -2,10 +2,10 @@
   "name": "trotot-payment-server",
   "version": "1.0.0",
   "description": "Free Node.js Express Payment Server for TroTot MoMo v2 Integration",
-  "main": "dist/server.js",
+  "main": "dist/payment-server/src/server.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node dist/payment-server/src/server.js",
     "dev": "npx ts-node src/server.ts"
   },
   "engines": {

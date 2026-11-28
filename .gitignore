@@ -46,3 +46,11 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Firebase Cloud Functions & Node.js Payment Server
+functions/node_modules/
+functions/lib/
+payment-server/node_modules/
+payment-server/dist/
+functions/.env
+payment-server/.env

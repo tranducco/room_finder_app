@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 import '../widgets/app_logo.dart';
 import 'dart:async';
@@ -39,11 +38,8 @@ class _SplashScreenState extends State<SplashScreen>
 
     Timer(const Duration(milliseconds: 2500), () {
       if (!mounted) return;
-      if (FirebaseAuth.instance.currentUser != null) {
-        Navigator.pushReplacementNamed(context, '/home');
-      } else {
-        Navigator.pushReplacementNamed(context, '/login');
-      }
+      // Khách chưa đăng nhập vẫn được vào trang chủ (guest mode)
+      Navigator.pushReplacementNamed(context, '/home');
     });
   }
 

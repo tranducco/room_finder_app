@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/guards/auth_guard.dart';
 import '../../data/admin_service.dart';
 import '../../data/review_service.dart';
 import '../../data/room_service.dart';
@@ -88,11 +89,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
   Future<void> _toggleFavorite(Room room) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vui lòng đăng nhập để lưu phòng yêu thích!'),
-        ),
-      );
+      AuthGuard.requireLogin(context, featureName: 'Lưu phòng yêu thích');
       return;
     }
 
@@ -169,12 +166,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
   void _showReportDialog(Room room) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vui lòng đăng nhập để gửi báo cáo vi phạm!'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      AuthGuard.requireLogin(context, featureName: 'Báo cáo vi phạm');
       return;
     }
 
@@ -312,11 +304,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
   void _showBookingBottomSheet(Room room) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vui lòng đăng nhập để đặt lịch xem phòng!'),
-        ),
-      );
+      AuthGuard.requireLogin(context, featureName: 'Đặt lịch xem phòng');
       return;
     }
 
@@ -568,11 +556,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
   void _showReviewBottomSheet(Room room) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vui lòng đăng nhập để viết đánh giá!'),
-        ),
-      );
+      AuthGuard.requireLogin(context, featureName: 'Viết đánh giá phòng trọ');
       return;
     }
 

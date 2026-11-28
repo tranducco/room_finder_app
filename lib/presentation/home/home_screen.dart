@@ -1,9 +1,12 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/guards/auth_guard.dart';
 import 'home_tab.dart';
 import 'favorites_tab.dart';
 import '../profile/profile_tab.dart';
+import '../profile/guest_profile_tab.dart';
 import 'widgets/desktop_header.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -49,13 +52,17 @@ class _HomeScreenState extends State<HomeScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth >= 850;
 
+    final isGuest = FirebaseAuth.instance.currentUser == null;
+
     final tabs = [
       HomeTab(
         key: _homeTabKey,
         searchController: _searchController,
       ),
-      const FavoritesTab(),
-      const ProfileTab(),
+      // Khách thấy màn hình guest profile thay cho FavoritesTab
+      isGuest ? const GuestProfileTab() : const FavoritesTab(),
+      // Khách thấy GuestProfileTab, người dùng thấy ProfileTab
+      isGuest ? const GuestProfileTab() : const ProfileTab(),
     ];
 
     return PopScope(
@@ -122,6 +129,11 @@ class _HomeScreenState extends State<HomeScreen> {
             : NavigationBar(
                 selectedIndex: _currentIndex,
                 onDestinationSelected: (index) {
+                  // Tab 1 (Đã lưu) yêu cầu đăng nhập
+                  if (index == 1 && FirebaseAuth.instance.currentUser == null) {
+                    AuthGuard.requireLogin(context, featureName: 'Danh sách phòng đã lưu');
+                    return;
+                  }
                   setState(() {
                     _currentIndex = index;
                   });

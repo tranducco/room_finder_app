@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../../../core/guards/auth_guard.dart';
 import '../../../data/auth_service.dart';
 import '../../../data/notification_service.dart';
 import '../../../data/room_service.dart';
@@ -250,7 +251,13 @@ class _DesktopHeaderState extends State<DesktopHeader> {
                         icon: Icons.favorite_border_rounded,
                         label: 'Đã lưu',
                         isSelected: widget.currentIndex == 1,
-                        onTap: () => widget.onTabSelected(1),
+                        onTap: () {
+                          // Guest: hiện bottom sheet yêu cầu đăng nhập
+                          AuthGuard.requireLogin(
+                            context,
+                            featureName: 'Danh sách phòng đã lưu',
+                          );
+                        },
                       ),
                     const SizedBox(width: 6),
                     _navItem(
@@ -280,14 +287,25 @@ class _DesktopHeaderState extends State<DesktopHeader> {
                       _headerIconButton(
                         icon: Icons.notifications_outlined,
                         tooltip: 'Thông báo',
-                        onTap: () => _openNotificationsDialog(context),
+                        onTap: () => AuthGuard.requireLogin(
+                          context,
+                          featureName: 'Xem thông báo',
+                        ),
                       ),
                     const SizedBox(width: 6),
 
                     _headerIconButton(
                       icon: Icons.calendar_month_outlined,
                       tooltip: 'Lịch hẹn xem phòng',
-                      onTap: () => Navigator.pushNamed(context, '/my-bookings'),
+                      onTap: () {
+                        if (!AuthGuard.requireLogin(
+                          context,
+                          featureName: 'Lịch hẹn xem phòng',
+                        )) {
+                          return;
+                        }
+                        Navigator.pushNamed(context, '/my-bookings');
+                      },
                     ),
                     const SizedBox(width: 6),
 

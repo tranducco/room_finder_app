@@ -310,6 +310,7 @@ void main() {
         expect(r.amenities.isNotEmpty, isTrue);
         expect(r.roomType.isNotEmpty, isTrue);
         expect(r.status.isNotEmpty, isTrue);
+        expect(['normal', 'bronze', 'silver', 'gold'], contains(r.vipType));
         expect(r.averageRating, equals(0.0));
         expect(r.totalReviews, equals(0));
       }

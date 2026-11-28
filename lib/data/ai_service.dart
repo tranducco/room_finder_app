@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_generative_ai/google_generative_ai.dart' hide ChatSession;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
 
 import '../domain/models/chat_message.dart';
 import '../domain/models/chat_session.dart';
@@ -13,63 +15,85 @@ class AiService {
   final AiRateLimitService _rateLimitService = AiRateLimitService();
   final RagChatService _ragChatService = RagChatService();
 
+  static const String _envPaymentApiUrl = String.fromEnvironment('PAYMENT_API_URL');
+  static const String _customPaymentServerUrl = 'https://room-finder-app-o3aq.onrender.com';
+
+  String get _backendBaseUrl {
+    if (_envPaymentApiUrl.isNotEmpty) return _envPaymentApiUrl;
+    return _customPaymentServerUrl;
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
-  // MODEL NORMALIZATION & FALLBACK
+  // MODEL NORMALIZATION & SERVER PROXY
   // ─────────────────────────────────────────────────────────────────────────
 
-  /// Chuẩn hóa tên model Gemini:
-  /// - Nếu người dùng nhập "3.8", "3.8 flash", "gemini-3.8-flash" (tên hiển thị trong IDE)
-  ///   -> Tự động ánh xạ về model Flash mới nhất miễn phí của Google: "gemini-2.0-flash".
-  /// - Model mặc định miễn phí: "gemini-2.0-flash".
+  /// Chuẩn hóa tên model Gemini đồng bộ với [RagChatService.normalizeModelName]:
+  /// - Mặc định sử dụng alias ổn định: "gemini-flash-latest".
+  /// - Tự động chuyển các model cũ đã ngừng hoạt động (1.5 / 2.0) sang "gemini-flash-latest".
   static String normalizeModelName(String? rawModel) =>
       RagChatService.normalizeModelName(rawModel);
 
-  /// Kiểm tra kết nối tới Gemini API với apiKey và modelName cụ thể (Dùng cho Admin Test Ping)
+  /// Kiểm tra kết nối tới Gemini API thông qua Backend Proxy (không giữ key trên client).
   Future<String> testGeminiConnection({
-    required String apiKey,
     required String modelName,
+    String? apiKey,
   }) async {
-    final cleanKey = apiKey.trim();
-    if (cleanKey.isEmpty) {
-      throw Exception('API Key không được để trống! Vui lòng nhập Gemini API Key.');
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw Exception('Vui lòng đăng nhập tài khoản Admin để kiểm tra kết nối AI.');
     }
+
+    final idToken = await user.getIdToken();
     final normalizedModel = normalizeModelName(modelName);
-    final candidateModels = <String>[
-      if (normalizedModel.contains('lite')) normalizedModel,
-      'gemini-flash-lite-latest',
-      'gemini-3.5-flash-lite',
-      if (!normalizedModel.contains('lite')) normalizedModel,
-      'gemini-flash-latest',
-      'gemini-3.8-flash',
-    ];
+    final payload = <String, dynamic>{
+      'modelName': normalizedModel,
+      if (apiKey != null && apiKey.trim().isNotEmpty) 'apiKey': apiKey.trim(),
+    };
 
-    String? lastError;
-    for (final candidate in candidateModels) {
-      try {
-        final testModel = GenerativeModel(
-          model: candidate,
-          apiKey: cleanKey,
-          generationConfig: GenerationConfig(temperature: 0.2),
-        );
+    final response = await http
+        .post(
+          Uri.parse('$_backendBaseUrl/testGeminiConnection'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $idToken',
+          },
+          body: jsonEncode(payload),
+        )
+        .timeout(const Duration(seconds: 15));
 
-        final response = await testModel.generateContent([
-          Content.text('Phản hồi lại đúng 1 từ "OK" để kiểm tra kết nối.'),
-        ]).timeout(const Duration(milliseconds: 3500));
-
-        final reply = response.text?.trim() ?? '';
-        if (reply.isNotEmpty) {
-          if (candidate != normalizedModel) {
-            return 'Kết nối thành công! Đã tự động tối ưu hóa sang $candidate (phản hồi siêu nhanh < 1s): $reply';
-          }
-          return 'Kết nối thành công ($candidate): $reply';
-        }
-      } catch (e) {
-        lastError = e.toString().replaceAll('Exception: ', '');
-        continue;
-      }
+    final rawBody = utf8.decode(response.bodyBytes);
+    Map<String, dynamic> body;
+    try {
+      body = jsonDecode(rawBody) as Map<String, dynamic>;
+    } catch (_) {
+      throw Exception('Máy chủ AI Proxy đang khởi động hoặc bận (HTTP ${response.statusCode}).');
     }
 
-    throw Exception(lastError ?? 'Không thể kết nối đến máy chủ Google Gemini.');
+    if (response.statusCode >= 200 && response.statusCode < 300 && body['success'] == true) {
+      return body['message'] as String? ?? 'Kết nối thành công!';
+    }
+    throw Exception(body['message'] as String? ?? 'Không thể kết nối đến máy chủ Google Gemini.');
+  }
+
+  /// Kiểm tra trạng thái cấu hình GEMINI_API_KEY trên server (chỉ trả metadata, không trả raw key).
+  Future<Map<String, dynamic>> getServerAiKeyStatus() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return {'configured': false, 'source': 'none'};
+    }
+    try {
+      final idToken = await user.getIdToken();
+      final response = await http
+          .get(
+            Uri.parse('$_backendBaseUrl/admin/aiKeyStatus'),
+            headers: {'Authorization': 'Bearer $idToken'},
+          )
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return {'configured': false, 'source': 'unknown'};
   }
 
   // 1. Lấy hoặc tạo phiên hội thoại mới
@@ -171,10 +195,10 @@ class AiService {
       'updatedAt': FieldValue.serverTimestamp(),
     });
 
-    // 2. Tải tri thức & cấu hình hệ thống từ Firestore
+    // 2. Tải tri thức & cấu hình hệ thống từ Firestore (không đọc apiKey ở client)
     final knowledge = await _adminService.getAiKnowledge();
     final botName = knowledge['botName'] as String? ?? 'Trợ lý ảo TroTot AI';
-    final rawModelName = knowledge['modelName'] as String? ?? 'gemini-2.0-flash';
+    final rawModelName = knowledge['modelName'] as String? ?? 'gemini-flash-latest';
     final modelName = normalizeModelName(rawModelName);
     final temperature = (knowledge['temperature'] as num?)?.toDouble() ?? 0.5;
     final systemPrompt = knowledge['systemPrompt'] as String? ??
@@ -182,11 +206,6 @@ class AiService {
     final faqs = List<Map<String, dynamic>>.from(
       (knowledge['faqs'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map)),
     );
-    final configuredApiKey = (knowledge['apiKey'] as String? ?? '').trim();
-
-    // Lấy API Key từ config Firestore hoặc --dart-define
-    const envKey = String.fromEnvironment('GEMINI_API_KEY');
-    final effectiveApiKey = configuredApiKey.isNotEmpty ? configuredApiKey : envKey;
 
     // 3. Lấy lịch sử hội thoại gần nhất (tối đa 6 tin) để giữ ngữ cảnh đa lượt
     final recentMsgsSnap = await messagesRef
@@ -195,23 +214,22 @@ class AiService {
         .get();
 
     final historyDocs = recentMsgsSnap.docs.reversed.toList();
-    final List<Content> chatHistory = historyDocs
-        .take(historyDocs.length - 1)
+    final List<Map<String, String>> chatHistory = historyDocs
+        .take(historyDocs.isNotEmpty ? historyDocs.length - 1 : 0)
         .map((doc) {
           final d = doc.data();
           final isUser = d['sender'] == 'user';
           final txt = d['text'] as String? ?? '';
-          return isUser ? Content.text(txt) : Content.model([TextPart(txt)]);
+          return {'role': isUser ? 'user' : 'model', 'text': txt};
         })
         .toList();
 
-    // 4. Thực thi quy trình RAG 3 bước chuẩn:
-    //    Bước 1: Trích xuất Intent -> JSON (có auto-fallback)
-    //    Bước 2: Truy vấn CSDL Firestore -> Lọc TOP 5 phòng khớp nhất
-    //    Bước 3: Inject gọn 5 phòng vào System Prompt và sinh câu trả lời với cascade model
+    final idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
+
+    // 4. Thực thi quy trình RAG 3 bước qua Server Proxy
     final ragResult = await _ragChatService.executeRagChat(
       userMessage: userMessage,
-      apiKey: effectiveApiKey,
+      idToken: idToken,
       botName: botName,
       systemPrompt: systemPrompt,
       faqs: faqs,

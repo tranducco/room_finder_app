@@ -1119,6 +1119,10 @@ class _NotificationSheetState extends State<NotificationSheet>
         return Icons.error_outline_rounded;
       case 'booking':
         return Icons.calendar_today_rounded;
+      case 'review':
+        return Icons.star_rounded;
+      case 'package_activated':
+        return Icons.workspace_premium_rounded;
       case 'system':
       default:
         return Icons.campaign_rounded;
@@ -1133,6 +1137,10 @@ class _NotificationSheetState extends State<NotificationSheet>
         return Colors.red.shade700;
       case 'booking':
         return const Color(0xFF00897B);
+      case 'review':
+        return Colors.amber.shade700;
+      case 'package_activated':
+        return Colors.orange.shade700;
       case 'system':
       default:
         return Colors.blue.shade700;

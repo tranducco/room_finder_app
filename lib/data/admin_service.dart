@@ -214,6 +214,7 @@ class AdminService {
           .get();
       if (doc.exists && doc.data() != null) {
         final data = Map<String, dynamic>.from(doc.data()!);
+        data.remove('apiKey'); // Không trả secret apiKey ra client
         data['modelName'] = RagChatService.normalizeModelName(data['modelName'] as String?);
         _cachedAiKnowledge = data;
         _lastAiKnowledgeFetch = now;
@@ -254,15 +255,35 @@ class AdminService {
   Future<void> saveAiKnowledge(Map<String, dynamic> data) async {
     _cachedAiKnowledge = null; // Invalidate cache để cập nhật ngay
     final sanitized = Map<String, dynamic>.from(data);
+    final newApiKey = (sanitized.remove('apiKey') as String? ?? '').trim();
+
     if (sanitized.containsKey('modelName')) {
       sanitized['modelName'] =
           RagChatService.normalizeModelName(sanitized['modelName'] as String?);
     }
+
+    // Luôn xóa trường apiKey khỏi document công khai system_settings/ai_knowledge
+    sanitized['apiKey'] = FieldValue.delete();
     sanitized['updatedAt'] = FieldValue.serverTimestamp();
     await _firestore.collection('system_settings').doc('ai_knowledge').set(
           sanitized,
           SetOptions(merge: true),
         );
+
+    if (newApiKey.isNotEmpty) {
+      await saveAiApiKeySecret(newApiKey);
+    }
+  }
+
+  /// Lưu Gemini API Key vào collection bảo mật `system_secrets/ai_config`
+  /// (client không có quyền đọc; chỉ Admin ghi & Server Admin SDK đọc).
+  Future<void> saveAiApiKeySecret(String apiKey) async {
+    final clean = apiKey.trim();
+    if (clean.isEmpty) return;
+    await _firestore.collection('system_secrets').doc('ai_config').set({
+      'apiKey': clean,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 }
 

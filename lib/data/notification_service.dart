@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../domain/models/app_notification.dart';
 
@@ -27,6 +28,9 @@ class NotificationService {
     required String title,
     required String body,
     String type = 'system',
+    String? senderId,
+    String? bookingId,
+    String? reviewId,
   }) async {
     String targetUid = userId.trim();
 
@@ -44,14 +48,28 @@ class NotificationService {
       } catch (_) {}
     }
 
-    await _firestore.collection('notifications').add({
+    final effectiveSenderId =
+        (senderId != null && senderId.trim().isNotEmpty)
+            ? senderId.trim()
+            : (FirebaseAuth.instance.currentUser?.uid ?? '');
+
+    final payload = <String, dynamic>{
       'recipientId': targetUid,
+      'senderId': effectiveSenderId,
       'title': title,
       'body': body,
       'type': type,
       'isRead': false,
       'createdAt': FieldValue.serverTimestamp(),
-    });
+    };
+    if (bookingId != null && bookingId.trim().isNotEmpty) {
+      payload['bookingId'] = bookingId.trim();
+    }
+    if (reviewId != null && reviewId.trim().isNotEmpty) {
+      payload['reviewId'] = reviewId.trim();
+    }
+
+    await _firestore.collection('notifications').add(payload);
   }
 
   // 3. Lấy toàn bộ thông báo cho Admin
@@ -94,9 +112,13 @@ class NotificationService {
 
   // 5. Đánh dấu đã đọc
   Future<void> markAsRead(String notificationId) async {
-    await _firestore.collection('notifications').doc(notificationId).update({
-      'isRead': true,
-    });
+    try {
+      await _firestore.collection('notifications').doc(notificationId).update({
+        'isRead': true,
+      });
+    } catch (_) {
+      // Bỏ qua nếu thông báo không cho phép cập nhật
+    }
   }
 
   // 6. Xóa thông báo (Admin)

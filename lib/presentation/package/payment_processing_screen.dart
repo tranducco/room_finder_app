@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -104,18 +105,28 @@ class _PaymentProcessingScreenState extends State<PaymentProcessingScreen> {
   }
 
   Future<void> _openMoMo() async {
-    final targetUrl = widget.deeplink?.isNotEmpty == true
-        ? widget.deeplink!
-        : (widget.payUrl ?? '');
+    final payUrl = widget.payUrl ?? '';
+    final deeplink = widget.deeplink ?? '';
+
+    // Trên trình duyệt Web luôn ưu tiên HTTPS payUrl; trên Mobile ưu tiên deeplink
+    final targetUrl = kIsWeb
+        ? (payUrl.isNotEmpty ? payUrl : deeplink)
+        : (deeplink.isNotEmpty ? deeplink : payUrl);
 
     if (targetUrl.isEmpty) return;
 
     try {
       final uri = Uri.parse(targetUrl);
-      if (await canLaunchUrl(uri)) {
+      if (kIsWeb) {
+        await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+          webOnlyWindowName: '_blank',
+        );
+      } else if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else if (widget.payUrl != null) {
-        await launchUrl(Uri.parse(widget.payUrl!), mode: LaunchMode.externalApplication);
+      } else if (payUrl.isNotEmpty) {
+        await launchUrl(Uri.parse(payUrl), mode: LaunchMode.externalApplication);
       }
     } catch (_) {}
   }

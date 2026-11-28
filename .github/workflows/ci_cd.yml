@@ -26,7 +26,7 @@ jobs:
         run: flutter pub get
 
       - name: Analyze Dart code
-        run: flutter analyze --no-fatal-infos
+        run: flutter analyze
 
       - name: Run Flutter unit & widget tests
         run: flutter test
@@ -54,9 +54,32 @@ jobs:
       - name: Build TypeScript
         run: npm run build
 
+  payment_server_build:
+    name: Payment & AI Proxy Server TypeScript Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: payment-server
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: payment-server/package-lock.json
+
+      - name: Install Payment Server dependencies
+        run: npm ci
+
+      - name: Build TypeScript
+        run: npm run build
+
   build_android_apk:
     name: Build Android Release APK
-    needs: [ flutter_analyze_and_test, functions_build ]
+    needs: [ flutter_analyze_and_test, functions_build, payment_server_build ]
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     steps:
@@ -91,7 +114,7 @@ jobs:
 
   build_web:
     name: Build Flutter Web Release
-    needs: [ flutter_analyze_and_test, functions_build ]
+    needs: [ flutter_analyze_and_test, functions_build, payment_server_build ]
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     steps:

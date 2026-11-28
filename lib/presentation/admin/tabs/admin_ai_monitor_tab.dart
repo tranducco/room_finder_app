@@ -20,7 +20,7 @@ class _AdminAiMonitorTabState extends State<AdminAiMonitorTab> {
   final _systemPromptController = TextEditingController();
   final _apiKeyController = TextEditingController();
 
-  String _selectedModel = 'gemini-3.8-flash';
+  String _selectedModel = 'gemini-flash-latest';
   double _temperature = 0.5;
   List<Map<String, dynamic>> _faqs = [];
 
@@ -31,6 +31,8 @@ class _AdminAiMonitorTabState extends State<AdminAiMonitorTab> {
   bool _isTesting = false;
   String? _testResult;
   bool _testSuccess = false;
+  bool _serverKeyConfigured = false;
+  String _serverKeySource = 'none';
 
   final List<Map<String, String>> _availableModels = [
     {
@@ -38,16 +40,24 @@ class _AdminAiMonitorTabState extends State<AdminAiMonitorTab> {
       'label': '⚡ Gemini Flash Lite (< 1s, khuyên dùng)',
     },
     {
+      'id': 'gemini-flash-latest',
+      'label': '✨ Gemini Flash Latest (Khuyên dùng)',
+    },
+    {
       'id': 'gemini-3.5-flash-lite',
       'label': '🚀 Gemini 3.5 Flash Lite (Siêu nhanh)',
     },
     {
-      'id': 'gemini-flash-latest',
-      'label': '✨ Gemini Flash Latest (Bản chuẩn)',
+      'id': 'gemini-3.8-flash',
+      'label': '🌟 Gemini 3.8 Flash (Bản mới)',
     },
     {
-      'id': 'gemini-3.8-flash',
-      'label': '🌟 Gemini 3.8 Flash (Bản mới nhất)',
+      'id': 'gemini-2.5-flash-lite',
+      'label': '💨 Gemini 2.5 Flash Lite (Ổn định)',
+    },
+    {
+      'id': 'gemini-2.5-flash',
+      'label': '🔷 Gemini 2.5 Flash (Ổn định)',
     },
     {
       'id': 'custom',
@@ -75,8 +85,9 @@ class _AdminAiMonitorTabState extends State<AdminAiMonitorTab> {
     try {
       final data = await _adminService.getAiKnowledge();
       final stats = await _adminService.getDashboardStats();
+      final keyStatus = await _aiService.getServerAiKeyStatus();
       if (mounted) {
-        final rawModel = data['modelName'] as String? ?? 'gemini-2.0-flash';
+        final rawModel = data['modelName'] as String? ?? 'gemini-flash-latest';
         final normalized = AiService.normalizeModelName(rawModel);
 
         final isKnown = _availableModels.any((m) => m['id'] == normalized);
@@ -85,7 +96,9 @@ class _AdminAiMonitorTabState extends State<AdminAiMonitorTab> {
           _modelController.text = isKnown ? normalized : rawModel;
           _selectedModel = isKnown ? normalized : 'custom';
           _systemPromptController.text = data['systemPrompt'] as String? ?? '';
-          _apiKeyController.text = data['apiKey'] as String? ?? '';
+          _apiKeyController.clear(); // Write-only: không đọc secret apiKey về client
+          _serverKeyConfigured = keyStatus['configured'] == true;
+          _serverKeySource = (keyStatus['source'] as String?) ?? 'none';
           _temperature = (data['temperature'] as num?)?.toDouble() ?? 0.5;
           _faqs = List<Map<String, dynamic>>.from(
             (data['faqs'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map)),
@@ -105,19 +118,26 @@ class _AdminAiMonitorTabState extends State<AdminAiMonitorTab> {
       final effectiveModel = _selectedModel == 'custom'
           ? _modelController.text.trim()
           : _selectedModel;
+      final enteredKey = _apiKeyController.text.trim();
 
       await _adminService.saveAiKnowledge({
         'botName': _botNameController.text.trim(),
         'modelName': effectiveModel,
         'systemPrompt': _systemPromptController.text.trim(),
-        'apiKey': _apiKeyController.text.trim(),
+        if (enteredKey.isNotEmpty) 'apiKey': enteredKey,
         'temperature': _temperature,
         'faqs': _faqs,
       });
 
+      final keyStatus = await _aiService.getServerAiKeyStatus();
       if (!mounted) return;
+      setState(() {
+        _apiKeyController.clear();
+        _serverKeyConfigured = keyStatus['configured'] == true;
+        _serverKeySource = (keyStatus['source'] as String?) ?? 'none';
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('🎉 Đã lưu cấu hình tri thức Chatbot AI thành công!')),
+        const SnackBar(content: Text('🎉 Đã lưu cấu hình tri thức Chatbot AI an toàn!')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -131,12 +151,6 @@ class _AdminAiMonitorTabState extends State<AdminAiMonitorTab> {
 
   Future<void> _testGeminiApi() async {
     final key = _apiKeyController.text.trim();
-    if (key.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng nhập API Key để kiểm tra!')),
-      );
-      return;
-    }
 
     setState(() {
       _isTesting = true;
@@ -149,7 +163,7 @@ class _AdminAiMonitorTabState extends State<AdminAiMonitorTab> {
 
     try {
       final message = await _aiService.testGeminiConnection(
-        apiKey: key,
+        apiKey: key.isNotEmpty ? key : null,
         modelName: targetModel,
       );
       if (mounted) {
@@ -352,7 +366,7 @@ class _AdminAiMonitorTabState extends State<AdminAiMonitorTab> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Mô hình AI: Google Gemini 3.8 Flash (Tổng cộng $_totalSessions phiên tư vấn)',
+                          'Mô hình AI: ${_selectedModel == 'custom' ? (_modelController.text.trim().isNotEmpty ? _modelController.text.trim() : 'Tùy chỉnh') : _selectedModel} (Tổng cộng $_totalSessions phiên tư vấn)',
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -508,7 +522,7 @@ class _AdminAiMonitorTabState extends State<AdminAiMonitorTab> {
                       controller: _modelController,
                       decoration: const InputDecoration(
                         labelText: 'Model Identifier tùy chỉnh',
-                        hintText: 'Ví dụ: gemini-2.0-flash, gemini-1.5-flash...',
+                        hintText: 'Ví dụ: gemini-flash-latest, gemini-2.5-flash, gemini-3.8-flash...',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.code_rounded, color: Color(0xFF00897B)),
                       ),
@@ -629,14 +643,51 @@ class _AdminAiMonitorTabState extends State<AdminAiMonitorTab> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Gemini API Key & Test Connection
+                  // Trạng thái bảo mật API Key phía Server (không trả key về client)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _serverKeyConfigured ? Colors.green.shade50 : Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _serverKeyConfigured ? Colors.green.shade300 : Colors.orange.shade300,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _serverKeyConfigured ? Icons.verified_user_rounded : Icons.warning_amber_rounded,
+                          size: 18,
+                          color: _serverKeyConfigured ? Colors.green.shade700 : Colors.orange.shade800,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _serverKeyConfigured
+                                ? (_serverKeySource == 'env'
+                                    ? 'Bảo mật API Key: Đã cấu hình trên biến môi trường Server (GEMINI_API_KEY). Client không đọc trực tiếp.'
+                                    : 'Bảo mật API Key: Đã lưu bảo mật trong collection system_secrets (client bị chặn đọc).')
+                                : 'Chưa cấu hình GEMINI_API_KEY trên Server Proxy. Nhập key mới bên dưới hoặc thiết lập trên Render.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: _serverKeyConfigured ? Colors.green.shade900 : Colors.orange.shade900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Gemini API Key (Write-only) & Test Connection qua Server Proxy
                   if (isSmall) ...[
                     TextField(
                       controller: _apiKeyController,
                       obscureText: true,
                       decoration: const InputDecoration(
-                        labelText: 'Google Gemini API Key',
-                        hintText: 'Nhập AIzaSy...',
+                        labelText: 'Cập nhật Google Gemini API Key (chỉ ghi, không lộ)',
+                        hintText: 'Để trống nếu dùng key đang cấu hình trên Server...',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.key_rounded, color: Color(0xFF00897B)),
                       ),
@@ -676,8 +727,8 @@ class _AdminAiMonitorTabState extends State<AdminAiMonitorTab> {
                             controller: _apiKeyController,
                             obscureText: true,
                             decoration: const InputDecoration(
-                              labelText: 'Google Gemini API Key (Miễn phí từ Google AI Studio)',
-                              hintText: 'Nhập AIzaSy... (Nếu để trống hệ thống dùng Offline RAG thông minh)',
+                              labelText: 'Cập nhật Google Gemini API Key (Write-only, lưu tại system_secrets)',
+                              hintText: 'Để trống để dùng GEMINI_API_KEY trên Server Proxy hoặc nhập AIzaSy... mới',
                               border: OutlineInputBorder(),
                               prefixIcon: Icon(Icons.key_rounded, color: Color(0xFF00897B)),
                             ),

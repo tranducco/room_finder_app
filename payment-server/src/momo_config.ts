@@ -14,7 +14,11 @@ export interface MoMoConfig {
 }
 
 export function getMoMoConfig(): MoMoConfig {
-  const serverBase = (process.env.SERVER_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
+  const serverBase = (
+    process.env.SERVER_BASE_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    "https://room-finder-app-o3aq.onrender.com"
+  ).replace(/\/+$/, "");
   const appBase = (process.env.APP_BASE_URL || "https://phongtro-ai.web.app").replace(/\/+$/, "");
   const isProduction = process.env.MOMO_ENVIRONMENT === "production";
 

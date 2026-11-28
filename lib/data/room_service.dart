@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../domain/models/app_user.dart';
 import '../domain/models/room.dart';
@@ -69,8 +70,18 @@ class RoomService {
 
     final currentStatus = currentDoc.data()?['status'] as String? ?? '';
 
-    // Chuẩn bị payload từ model (đã bao gồm tất cả field)
+    // Chuẩn bị payload từ model và loại bỏ các trường nhạy cảm do Backend/Admin quản lý
     final payload = room.toMap();
+    payload.remove('averageRating');
+    payload.remove('totalReviews');
+    payload.remove('priority');
+    payload.remove('packageType');
+    payload.remove('packageStartAt');
+    payload.remove('packageExpiresAt');
+    payload.remove('vipType');
+    payload.remove('createdAt');
+    payload.remove('moderatedBy');
+    payload.remove('moderatedAt');
 
     if (currentStatus == 'rejected') {
       // Chủ phòng sửa lại bản tin bị từ chối → chuyển về chờ duyệt lại
@@ -270,7 +281,7 @@ class RoomService {
       } catch (_) {}
     }
 
-    await _firestore.collection('bookings').add({
+    final bookingRef = await _firestore.collection('bookings').add({
       'roomId': roomId,
       'roomTitle': effectiveTitle,
       'roomAddress': effectiveAddress,
@@ -287,14 +298,18 @@ class RoomService {
       'createdAt': FieldValue.serverTimestamp(),
     });
 
-    // Thông báo cho chủ phòng
-    if (ownerId.isNotEmpty) {
-      await NotificationService().sendUserNotification(
-        userId: ownerId,
-        title: 'Có khách đặt lịch xem phòng! 📅',
-        body: 'Khách hẹn xem phòng "$effectiveTitle" với SĐT $phone vào ${appointmentDate.day}/${appointmentDate.month}/${appointmentDate.year}.',
-        type: 'booking',
-      );
+    // Thông báo cho chủ phòng (kèm senderId & bookingId để vượt qua Firestore Rules)
+    if (ownerId.isNotEmpty && ownerId != userId) {
+      try {
+        await NotificationService().sendUserNotification(
+          userId: ownerId,
+          title: 'Có khách đặt lịch xem phòng! 📅',
+          body: 'Khách hẹn xem phòng "$effectiveTitle" với SĐT $phone vào ${appointmentDate.day}/${appointmentDate.month}/${appointmentDate.year}.',
+          type: 'booking',
+          senderId: userId,
+          bookingId: bookingRef.id,
+        );
+      } catch (_) {}
     }
   }
 
@@ -377,13 +392,18 @@ class RoomService {
     final doc = await _firestore.collection('bookings').doc(bookingId).get();
     final data = doc.data();
     final guestUserId = data?['userId'] as String? ?? '';
+    final ownerId = data?['ownerId'] as String? ?? '';
+    final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
     await _firestore.collection('bookings').doc(bookingId).update({
       'status': status,
     });
 
-    // Thông báo cho người đặt lịch
-    if (guestUserId.isNotEmpty) {
+    // Xác định người nhận thông báo (tránh tự gửi cho chính mình khi tự hủy lịch)
+    final isGuestCancelling = currentUid.isNotEmpty && currentUid == guestUserId;
+    final recipientId = isGuestCancelling ? ownerId : guestUserId;
+
+    if (recipientId.isNotEmpty && recipientId != currentUid) {
       String title;
       String body;
 
@@ -393,8 +413,13 @@ class RoomService {
           body = 'Chủ trọ đã đồng ý lịch hẹn xem phòng của bạn. Vui lòng đến đúng giờ đã hẹn!';
           break;
         case 'cancelled':
-          title = 'Lịch hẹn bị từ chối ❌';
-          body = 'Rất tiếc, chủ trọ hiện không thể tiếp bạn vào khung giờ đã chọn.';
+          if (isGuestCancelling) {
+            title = 'Khách đã hủy lịch hẹn ❌';
+            body = 'Người thuê đã hủy lịch hẹn xem phòng của bạn.';
+          } else {
+            title = 'Lịch hẹn bị từ chối ❌';
+            body = 'Rất tiếc, chủ trọ hiện không thể tiếp bạn vào khung giờ đã chọn.';
+          }
           break;
         case 'completed':
           title = 'Lịch hẹn đã hoàn thành 🎉';
@@ -404,12 +429,16 @@ class RoomService {
           return; // Không gửi thông báo cho trạng thái 'pending'
       }
 
-      await NotificationService().sendUserNotification(
-        userId: guestUserId,
-        title: title,
-        body: body,
-        type: 'booking',
-      );
+      try {
+        await NotificationService().sendUserNotification(
+          userId: recipientId,
+          title: title,
+          body: body,
+          type: 'booking',
+          senderId: currentUid,
+          bookingId: bookingId,
+        );
+      } catch (_) {}
     }
   }
 

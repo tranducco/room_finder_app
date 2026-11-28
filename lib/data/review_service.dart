@@ -1,13 +1,24 @@
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
 
 import '../domain/models/review.dart';
 import 'notification_service.dart';
 
 /// Service xử lý đánh giá phòng trọ.
-/// Mọi thao tác ghi đều dùng Firestore Transaction để đảm bảo tính nhất quán
-/// giữa collection `reviews` và các trường thống kê trong collection `rooms`.
+/// Mọi thao tác ghi đều dùng Firestore và cập nhật thống kê phòng qua Backend API
+/// để đảm bảo quy tắc bảo mật trên Firestore Security Rules.
 class ReviewService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  static const String _envPaymentApiUrl = String.fromEnvironment('PAYMENT_API_URL');
+  static const String _customPaymentServerUrl = 'https://room-finder-app-o3aq.onrender.com';
+
+  String get _backendBaseUrl {
+    if (_envPaymentApiUrl.isNotEmpty) return _envPaymentApiUrl;
+    return _customPaymentServerUrl;
+  }
 
   // ─────────────────────────── Thêm đánh giá ───────────────────────────────
 
@@ -23,7 +34,6 @@ class ReviewService {
   /// 7. Cập nhật `averageRating` + `totalReviews` trong document `rooms`.
   /// 8. Gửi thông báo cho chủ phòng biết có đánh giá mới.
   Future<void> addReview(Review review) async {
-    final roomRef = _firestore.collection('rooms').doc(review.roomId);
     final reviewsCol = _firestore.collection('reviews');
 
     // 1. Chủ phòng không được tự đánh giá phòng của mình
@@ -86,34 +96,35 @@ class ReviewService {
       'createdAt': FieldValue.serverTimestamp(),
     });
 
-    // 6. Cập nhật thống kê điểm đánh giá & số lượt đánh giá trong document `rooms`
+    // 6. Gọi Backend API tính lại averageRating & totalReviews (an toàn, không ghi thẳng vào rooms)
     try {
-      final roomSnapshot = await roomRef.get();
-      if (roomSnapshot.exists) {
-        final data = roomSnapshot.data()!;
-        final oldTotal = (data['totalReviews'] ?? 0) as int;
-        final oldAvg = (data['averageRating'] ?? 0).toDouble();
-
-        final newTotal = oldTotal + 1;
-        final newAvg = ((oldAvg * oldTotal) + enrichedReview.rating) / newTotal;
-
-        await roomRef.update({
-          'averageRating': double.parse(newAvg.toStringAsFixed(1)),
-          'totalReviews': newTotal,
-        });
+      final idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
+      if (idToken != null && idToken.isNotEmpty) {
+        await http
+            .post(
+              Uri.parse('$_backendBaseUrl/recalculateRoomRating'),
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $idToken',
+              },
+              body: jsonEncode({'roomId': review.roomId}),
+            )
+            .timeout(const Duration(seconds: 10));
       }
     } catch (_) {
-      // Bỏ qua lỗi cập nhật thống kê nếu phân quyền rooms chưa cấp
+      // Server trigger / lần tính kế tiếp sẽ đồng bộ lại thống kê
     }
 
-    // 7. Gửi thông báo cho chủ phòng
+    // 7. Gửi thông báo cho chủ phòng (kèm senderId & reviewId hợp lệ theo Firestore Rules)
     if (review.ownerId.isNotEmpty && review.ownerId != review.userId) {
       try {
         await NotificationService().sendUserNotification(
           userId: review.ownerId,
           title: 'Phòng của bạn vừa nhận đánh giá mới! ⭐',
           body: '$reviewerName đã đánh giá ${review.rating.toStringAsFixed(1)} sao kèm nhận xét: "${review.comment}".',
-          type: 'system',
+          type: 'review',
+          senderId: review.userId,
+          reviewId: newReviewRef.id,
         );
       } catch (_) {}
     }

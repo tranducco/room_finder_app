@@ -9,7 +9,13 @@ class AuthGuard {
   AuthGuard._();
 
   /// Kiểm tra người dùng đã đăng nhập chưa
-  static bool isLoggedIn() => FirebaseAuth.instance.currentUser != null;
+  static bool isLoggedIn() {
+    try {
+      return FirebaseAuth.instance.currentUser != null;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// Hiển thị bottom sheet yêu cầu đăng nhập.
   /// - [featureName] : tên tính năng bị hạn chế (vd: "Đặt lịch xem phòng")

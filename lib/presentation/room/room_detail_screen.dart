@@ -13,6 +13,7 @@ import '../../domain/models/review.dart';
 import '../../domain/models/room.dart';
 import '../widgets/app_button_style.dart';
 import '../widgets/app_image.dart';
+import '../widgets/room_google_map_card.dart';
 
 class RoomDetailScreen extends StatefulWidget {
   const RoomDetailScreen({super.key});
@@ -1091,6 +1092,14 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                       ),
                     ],
                   ),
+                  if (room.address.trim().isNotEmpty || room.district.trim().isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    RoomGoogleMapCard(
+                      address: room.address,
+                      ward: room.ward,
+                      district: room.district,
+                    ),
+                  ],
 
                   // Living costs (Deposit, Electric, Water)
                   _buildUtilityCosts(room, currencyFormatter),

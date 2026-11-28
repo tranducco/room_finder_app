@@ -549,68 +549,74 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
               borderRadius: BorderRadius.circular(12),
               color: const Color(0xFFFCE4EC).withAlpha(120),
             ),
-            child: Row(
-              children: [
-                Radio<String>(
-                  value: 'momo',
-                  groupValue: _selectedPaymentMethod,
-                  activeColor: const Color(0xFFD82D8B),
-                  onChanged: (val) => setState(() => _selectedPaymentMethod = val!),
-                ),
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD82D8B),
-                    borderRadius: BorderRadius.circular(8),
+            child: RadioGroup<String>(
+              groupValue: _selectedPaymentMethod,
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _selectedPaymentMethod = val);
+                }
+              },
+              child: Row(
+                children: [
+                  const Radio<String>(
+                    value: 'momo',
+                    activeColor: Color(0xFFD82D8B),
                   ),
-                  child: const Center(
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD82D8B),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Center(
+                      child: Text(
+                        'MoMo',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Ví điện tử MoMo & Quét mã QR',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1A1A2E),
+                          ),
+                        ),
+                        Text(
+                          'Thanh toán an toàn, tức thì qua MoMo App / QR Code',
+                          style: TextStyle(color: Colors.grey, fontSize: 11.5),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade100,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
                     child: Text(
-                      'MoMo',
+                      'Sandbox Test',
                       style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
+                        color: Colors.green.shade800,
+                        fontSize: 10,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Ví điện tử MoMo & Quét mã QR',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1A1A2E),
-                        ),
-                      ),
-                      Text(
-                        'Thanh toán an toàn, tức thì qua MoMo App / QR Code',
-                        style: TextStyle(color: Colors.grey, fontSize: 11.5),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade100,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    'Sandbox Test',
-                    style: TextStyle(
-                      color: Colors.green.shade800,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],

@@ -12,76 +12,72 @@
 *Giáo viên hướng dẫn*: TS. Đỗ Oanh Cường               Email: cuongdo@tlu.edu.vn   
 
 **TÓM TẮT ĐỀ TÀI**  
-Trong bối cảnh nhu cầu tìm kiếm và thuê phòng trọ tại các thành phố lớn ngày càng tăng, người đi thuê thường mất nhiều thời gian để lọc và tìm kiếm các căn phòng phù hợp với ngân sách, vị trí và tiện ích mong muốn. Đề tài tập trung phát triển ứng dụng tìm kiếm và cho thuê phòng trọ đa nền tảng một cách nhanh chóng, tinh gọn bằng cách tận dụng các dịch vụ đám mây (Firebase) và nền tảng trí tuệ nhân tạo có sẵn (LLM API), thay vì tự phát triển toàn bộ hệ thống backend phức tạp từ đầu.  
-Hệ thống sử dụng Flutter để phát triển giao diện đa nền tảng, tích hợp trực tiếp với Firebase SDK để quản lý dữ liệu. Toàn bộ phần lưu trữ và logic backend được xử lý thông qua Firebase Authentication, cơ sở dữ liệu thời gian thực Firestore và Cloud Functions. Điểm nhấn kỹ thuật của đồ án là việc tích hợp Chatbot AI dựa trên Cloud LLM API (như OpenAI, Gemini) thay thế cho các mô hình tự huấn luyện. Chatbot được cấu hình bằng các System Prompt chuyên biệt để hiểu ngữ cảnh cho thuê bất động sản, từ đó tương tác tự nhiên với khách hàng và tự động truy xuất dữ liệu từ Firestore để gợi ý phòng trọ phù hợp. Quá trình đóng gói và triển khai ứng dụng được tự động hóa hoàn toàn bằng GitHub CI/CD. 
+Trong bối cảnh nhu cầu tìm kiếm và thuê phòng trọ tại các thành phố lớn ngày càng tăng, người đi thuê thường mất nhiều thời gian để lọc và tìm kiếm các căn phòng phù hợp với ngân sách, vị trí và tiện ích mong muốn. Đề tài tập trung phát triển ứng dụng tìm kiếm và cho thuê phòng trọ đa nền tảng (Flutter Web & Android) mang tên **TroTot** bằng cách tận dụng kiến trúc Serverless (Firebase) kết hợp Backend Node.js/TypeScript Proxy (triển khai trên Render Free Tier song song mã nguồn Firebase Cloud Functions v2) và nền tảng trí tuệ nhân tạo có sẵn (Google Gemini API).  
+Toàn bộ phần xác thực, lưu trữ dữ liệu và kiểm soát truy cập được xử lý qua Firebase Authentication, Cloud Firestore kèm Firestore Security Rules, và Backend Server (xử lý Proxy Gemini API, thanh toán MoMo v2 Sandbox, tự động kiểm duyệt báo cáo và cập nhật thống kê đánh giá). Điểm nhấn kỹ thuật của đồ án là việc tích hợp **Chatbot AI theo kiến trúc RAG 3 bước** (Intent Extraction → Top-K Retrieval → Context Injection) và **hệ thống 3 gói đăng tin VIP thanh toán qua cổng MoMo v2 AIO Gateway (Sandbox)** cùng **Admin Dashboard 7 phân hệ** và **Auto-moderation Pipeline**. Quá trình kiểm thử, build Android APK và Flutter Web được tự động hóa bằng GitHub Actions CI/CD và triển khai trực tiếp trên Firebase Hosting.
 
 **CÁC MỤC TIÊU CHÍNH**
 
 1. **Phân tích và thiết kế hệ thống**   
-- Xây dựng các biểu đồ UML (Use Case, Activity, Sequence) để làm rõ luồng tương tác giữa Người thuê, Chủ nhà và Chatbot.  
-2. **Xây dựng ứng dụng đa nền tảng (Flutter)**  
-- Xây dựng giao diện người dùng (UI/UX) cho các tính năng cốt lõi: Xem phòng trọ, Lọc/Tìm kiếm, Lưu yêu thích, và Giao diện Chatbot. Tích hợp Firebase SDK để kết nối dữ liệu.  
-3. **Quản lý dữ liệu và Backend (Firebase)**  
--  Sử dụng Authentication để đăng ký/đăng nhập người dùng.  
-- Sử dụng Firestore làm cơ sở dữ liệu thời gian thực cho thông tin phòng trọ, người dùng và lịch sử hội thoại.  
-- Sử dụng Cloud Functions để xử lý các tác vụ backend đơn giản (như gửi thông báo, đồng bộ dữ liệu).  
-4. **Tích hợp Chatbot AI (Cloud LLM API)**  
-- Sử dụng API của các mô hình ngôn ngữ lớn (OpenAI, Gemini) kết hợp với System Prompt để AI hiểu ngữ cảnh tư vấn phòng trọ và truy xuất dữ liệu phù hợp.  
-5. **Triển khai tự động (GitHub CI/CD)**  
-- Tự động hóa quy trình kiểm thử, đóng gói ứng dụng và tự động triển khai (deploy) lên các môi trường khi có cập nhật trên GitHub.
+- Xây dựng các biểu đồ UML (Use Case, Activity, Sequence) để làm rõ luồng tương tác giữa Khách vãng lai (Guest), Người thuê, Chủ trọ, Quản trị viên và Chatbot AI.  
+2. **Xây dựng ứng dụng đa nền tảng (Flutter Web & Android)**  
+- Xây dựng giao diện người dùng (UI/UX) cho các tính năng cốt lõi: Duyệt phòng ở chế độ Khách (Guest Mode + `AuthGuard`), Tìm kiếm & Lọc đa tiêu chí theo khu vực Hà Nội, Lưu yêu thích, Đặt lịch xem phòng, Đánh giá phòng trọ, Báo cáo vi phạm, Đăng tin VIP và Giao diện Chatbot AI.  
+3. **Quản lý dữ liệu, Bảo mật và Backend (Firebase + Node.js/TypeScript Server)**  
+- Sử dụng Firebase Authentication (Email/Password, Quên mật khẩu, Phân quyền User/Admin) kết hợp Guest Mode.  
+- Sử dụng Cloud Firestore làm cơ sở dữ liệu thời gian thực cùng Firestore Security Rules phân quyền chặt chẽ theo chủ sở hữu dữ liệu và vai trò Admin.  
+- Xây dựng Backend Node.js/TypeScript (song song trên Render Payment/AI Proxy Server và Firebase Cloud Functions v2) để giữ bí mật hoàn toàn `GEMINI_API_KEY`, xử lý chữ ký HMAC-SHA256 + IPN Webhook MoMo v2 Sandbox, tính toán `averageRating`/`totalReviews` và tự động ẩn tin đăng khi vượt ngưỡng 5 báo cáo vi phạm (Auto-moderation).  
+4. **Tích hợp Chatbot AI (Google Gemini API + RAG Framework)**  
+- Sử dụng Google Gemini API thông qua Backend Proxy (hỗ trợ model fallback và kiểm soát rate limit 50 lượt/ngày/user) kết hợp System Prompt và dữ liệu phòng thực tế từ Firestore để gợi ý phòng kèm thẻ `ROOM_ID`, đồng thời có Offline Fallback khi mất kết nối.  
+5. **Xây dựng Admin Dashboard 7 phân hệ & Triển khai tự động (GitHub CI/CD)**  
+- Hoàn thiện trang quản trị 7 phân hệ (Tổng quan, Quản lý tin đăng, Người dùng, Báo cáo vi phạm, Gửi thông báo, Trợ lý AI & Tri thức, Gói VIP & Doanh thu).  
+- Tự động hóa quy trình `flutter analyze`, `flutter test`, build Android APK / Flutter Web bằng GitHub Actions.
 
 **NỘI DUNG CHÍNH**
 
 1. **Nghiên cứu cơ sở lý thuyết**  
-- Kiến trúc Đa nền tảng: Nghiên cứu framework Flutter và ngôn ngữ Dart, cơ chế quản lý trạng thái (State Management) và cách tối ưu giao diện UI/UX trên thiết bị di động.  
-- Kiến trúc Serverless & Đám mây: Nghiên cứu hệ sinh thái Firebase (Authentication, Cloud Firestore, Cloud Storage, Cloud Functions) để thay thế cho backend truyền thống.  
-- Trí tuệ nhân tạo (AI): Nghiên cứu cách thức hoạt động của các Mô hình ngôn ngữ lớn (LLM \- Large Language Models), kỹ thuật Kỹ sư câu lệnh (Prompt Engineering) và phương pháp nhúng dữ liệu thực tế vào câu trả lời của AI (ứng dụng kỹ thuật RAG rút gọn).  
+- Kiến trúc Đa nền tảng: Nghiên cứu framework Flutter và ngôn ngữ Dart, thiết kế giao diện responsive cho cả Mobile và Desktop Web.  
+- Kiến trúc Serverless & Backend Proxy: Nghiên cứu Firebase (Authentication, Cloud Firestore, Firestore Security Rules, Hosting, Cloud Functions v2) kết hợp Node.js/TypeScript Express Server trên Render (giải pháp miễn phí thay thế Firebase Blaze cho các endpoint HTTP như Proxy AI và MoMo Webhook).  
+- Trí tuệ nhân tạo (AI): Nghiên cứu LLM (Google Gemini), Prompt Engineering, kỹ thuật RAG 3 bước và Rate Limiting.  
+- Thanh toán trực tuyến: Nghiên cứu quy trình tạo đơn hàng, chữ ký điện tử HMAC-SHA256 và đối soát IPN Webhook theo chuẩn MoMo Payment Gateway v2 (Sandbox).  
 - DevOps: Nghiên cứu quy trình tích hợp và triển khai liên tục (CI/CD) sử dụng GitHub Actions.  
 2. **Phân tích và thiết kế hệ thống**  
-- Xác định yêu cầu hệ thống: Phân tích quy trình nghiệp vụ cho thuê phòng trọ; xác định yêu cầu chức năng và phi chức năng cho 3 nhóm đối tượng: Quản trị viên, Chủ nhà và Người thuê.  
-- Thiết kế cơ sở dữ liệu (NoSQL): Xây dựng cấu trúc dữ liệu linh hoạt trên Cloud Firestore với các Collections chính bao gồm: Users (Người dùng), Rooms (Phòng trọ), Favorites (Yêu thích), Bookings (Đặt lịch) và Chat\_Histories (Lịch sử hội thoại).  
-- Thiết kế kiến trúc tổng thể: Lên sơ đồ luồng dữ liệu (Data flow) giữa Mobile App (Flutter) ↔ Firebase Services ↔ API của nền tảng LLM (OpenAI/Gemini).  
-- Xây dựng biểu đồ UML: Đặc tả hệ thống qua các sơ đồ Use Case (ca sử dụng), Activity Diagram (biểu đồ hoạt động của luồng đăng tin và chat với AI), và Sequence Diagram (biểu đồ tuần tự luồng truy xuất dữ liệu từ AI).  
+- Xác định yêu cầu hệ thống: Phân tích quy trình nghiệp vụ cho 4 nhóm đối tượng: Khách (Guest), Người thuê, Chủ nhà và Quản trị viên (Admin).  
+- Thiết kế cơ sở dữ liệu (NoSQL): Xây dựng cấu trúc trên Cloud Firestore với các Collections: `users`, `rooms`, `favorites`, `bookings`, `reviews`, `reports`, `notifications`, `chat_histories` (và subcollection `messages`), `api_limits`, `system_settings`, `system_secrets`, `package_plans`, `package_orders`, `payment_transactions`, `room_promotions`.  
+- Thiết kế kiến trúc tổng thể: Luồng dữ liệu giữa Flutter App (Web/Mobile) ↔ Firebase (Auth, Firestore) ↔ Backend Server (Render / Cloud Functions) ↔ Gemini API & MoMo Sandbox API.  
+- Xây dựng biểu đồ UML: Đặc tả qua sơ đồ Use Case, Activity Diagram (đăng tin, đặt lịch, thanh toán VIP, chat AI) và Sequence Diagram.  
 3. **Xây dựng các module nghiệp vụ chính trên ứng dụng**  
-- Module Quản lý tài khoản (Firebase Auth): Thực hiện đăng ký, đăng nhập (Email/Password, Google), quản lý hồ sơ cá nhân và phân quyền động (Chủ nhà / Người thuê).  
-- Module Quản lý tin đăng (Chủ nhà): Giao diện thêm/sửa/xóa thông tin phòng trọ (diện tích, giá thuê, tiện ích, vị trí tọa độ). Hình ảnh phòng được nén và tải lên Firebase Storage.  
-- Module Tìm kiếm và Bản đồ (Người thuê): Hiển thị danh sách phòng; tích hợp bộ lọc phức tạp (theo khoảng giá, diện tích, loại phòng). Tích hợp Google Maps API để hiển thị vị trí phòng trọ trực quan trên bản đồ.  
-- Module Tương tác & Đặt lịch: Cho phép người thuê lưu danh sách phòng yêu thích, gửi yêu cầu đặt lịch xem phòng trực tiếp đến chủ nhà và nhận thông báo trạng thái.  
-4. **Xây dựng và Tích hợp Chatbot AI Tư vấn (Cloud LLM API)**  
-- Thiết lập logic Backend qua Cloud Functions: Viết các hàm (functions) trung gian trên Node.js để kết nối ứng dụng với LLM API một cách bảo mật (không lộ API Key trên frontend).  
-- Xây dựng System Prompt: Cấu hình nhân cách cho AI đóng vai trò là "Chuyên viên tư vấn phòng trọ", hướng dẫn AI cách trả lời thân thiện, ngắn gọn và chỉ tập trung vào lĩnh vực bất động sản.  
-- Xây dựng cơ chế Gợi ý phòng thông minh: Khi người dùng nhập yêu cầu bằng văn bản tự nhiên (VD: "Tìm cho tôi phòng giá dưới 3 triệu ở Đống Đa, có điều hòa"), hệ thống trích xuất từ khóa, tự động query dữ liệu phòng đang trống từ Firestore, sau đó nhúng thông tin này vào LLM để Chatbot sinh ra câu trả lời tự nhiên kèm theo các đề xuất phòng trọ thực tế.  
-5. **Triển khai tự động hóa (GitHub CI/CD)**  
-- Cấu hình GitHub Actions: Viết các file script (YAML) để thiết lập luồng công việc (workflow) tự động hóa.  
-- Tự động hóa Build & Deploy: Cấu hình hệ thống tự động kiểm tra lỗi code (linting) và tự động đóng gói ứng dụng (build file APK cho Android hoặc build bản Web App) mỗi khi có thay đổi mã nguồn được đẩy (push/merge) lên nhánh chính trên GitHub.  
+- Module Tài khoản & Chế độ Khách (Firebase Auth + `AuthGuard`): Đăng ký, đăng nhập Email/Password, quên mật khẩu, phân quyền User/Admin; cho phép Khách duyệt danh sách và chi tiết phòng nhưng yêu cầu đăng nhập khi đặt lịch, lưu yêu thích, đánh giá, báo cáo hoặc chat AI. *(Ghi chú phạm vi: Google Sign-In chưa triển khai trong bản hiện tại do tập trung hoàn thiện luồng Email/Password và Guest Mode, được đề xuất là hướng mở rộng).*  
+- Module Quản lý tin đăng & Ảnh phòng (Chủ nhà): Thêm/sửa/xóa phòng trọ, quy trình kiểm duyệt (`pending_approval` → `available`/`rejected`/`hidden`). *(Giải trình kỹ thuật về lưu trữ ảnh: Do hệ thống vận hành trên gói Firebase Spark miễn phí không kích hoạt Firebase Cloud Storage trả phí theo gói Blaze, ảnh phòng được nén phía client và mã hóa Base64 hoặc lưu URL HTTPS trực tiếp trong Firestore; thiết kế kiểm soát chặt số lượng/kích thước ảnh nhằm bảo đảm tuân thủ giới hạn 1 MiB/document của Cloud Firestore và định hướng nâng cấp sang Firebase Storage/Cloudinary ở giai đoạn thương mại).*  
+- Module Tìm kiếm, Lọc khu vực Hà Nội & Đặt lịch (Người thuê): Tìm kiếm theo từ khóa, lọc nâng cao (khoảng giá, diện tích, loại phòng, tiện ích) và phân cấp địa lý Quận – Phường – Tên đường tại Hà Nội kết hợp ánh xạ các trường đại học lớn. *(Ghi chú phạm vi: Chưa tích hợp Google Maps API/tọa độ bản đồ do phụ thuộc Google Maps Billing trả phí; thay bằng bộ lọc địa lý chuẩn hóa tại Hà Nội và ghi nhận bản đồ trực quan là hướng mở rộng).*  
+- Module Đánh giá, Tố cáo vi phạm & Thông báo: Đánh giá sao/bình luận có cập nhật `averageRating`/`totalReviews` phía server; tố cáo vi phạm kích hoạt Auto-moderation ẩn tin sau 5 báo cáo; thông báo thời gian thực theo từng người dùng và broadcast từ Admin.  
+- Module Gói VIP & Thanh toán MoMo Sandbox: 3 gói **Đồng (15.000đ / 7 ngày)**, **Bạc (39.000đ / 15 ngày)**, **Vàng (69.000đ / 30 ngày)** sắp xếp ưu tiên hiển thị tin; thanh toán qua MoMo v2 Sandbox với chữ ký HMAC-SHA256, IPN Webhook và đối soát `checkPaymentStatus` phía server.  
+- Module Quản trị viên (Admin Dashboard 7 tab): Tổng quan thống kê, Kiểm duyệt phòng trọ, Quản lý người dùng (khóa/mở khóa, phân quyền), Xử lý báo cáo vi phạm, Gửi thông báo, Giám sát & cấu hình tri thức Chatbot AI, Quản lý Gói VIP & Doanh thu.  
+4. **Xây dựng và Tích hợp Chatbot AI Tư vấn (Google Gemini API qua Server Proxy)**  
+- Thiết lập Backend AI Proxy (`/aiChatProxy`, `/testGeminiConnection`, `/admin/aiKeyStatus`): Toàn bộ lệnh gọi Google Gemini API thực hiện ở backend với `GEMINI_API_KEY` lưu tại biến môi trường Server / collection bảo mật `system_secrets` (client bị chặn đọc tuyệt đối qua Firestore Rules).  
+- Xây dựng System Prompt & RAG 3 bước: Trích xuất tiêu chí (`UserSearchIntent`) tức thì (0ms với fallback AI cho câu mơ hồ) → Truy vấn và chấm điểm Top 5 phòng khả dụng từ Firestore → Inject ngữ cảnh phòng & FAQ vào Gemini để sinh câu trả lời kèm mã `[ROOM_ID: ...]`. Áp dụng Rate Limit 50 lượt/ngày/user và cơ chế Offline Fallback.  
+5. **Triển khai tự động hóa (GitHub CI/CD & Hosting)**  
+- Cấu hình GitHub Actions (`.github/workflows/ci_cd.yml`): Tự động chạy `flutter analyze`, `flutter test`, build Flutter Web và Android APK khi push/pull request.  
+- Triển khai Web trực tiếp trên Firebase Hosting (`https://phongtro-ai.web.app`) và Payment/AI Proxy Server trên Render.  
 6. **Kiểm thử và hoàn thiện**
 
-   **\-**	Thực hiện kiểm thử trên thiết bị di động (UI test, Integration test cho các luồng nghiệp vụ chính).
+   **\-**	Thực hiện kiểm thử unit/widget test (29 test cases trong `test/`) cho domain models, RAG/intent normalization, và giao diện banner carousel.
 
-   \- 	Kiểm thử độ an toàn của Chatbot (kiểm tra khả năng chống "ảo giác" hoặc trả lời sai ngữ cảnh).
+   \- 	Kiểm thử phân quyền Firestore Rules, luồng thanh toán MoMo Sandbox, kết nối Gemini API thực tế qua Proxy và khả năng chống "ảo giác" bằng danh sách phòng thực từ CSDL.
 
-   \-	Hoàn thiện mã nguồn, tối ưu hóa tốc độ truy vấn Firestore và hoàn thành quyển báo cáo tốt nghiệp.
+   \-	Hoàn thiện mã nguồn, tối ưu hóa truy vấn và hoàn thành quyển báo cáo tốt nghiệp.
 
    **KẾT QUẢ DỰ KIẾN**
 
 1. **Lý thuyết**  
 - Nắm được quy trình phân tích, thiết kế và xây dựng hệ thống thông tin cho bài toán quản lý và cho thuê phòng trọ.  
-- Hiểu và vận dụng được Flutter/Dart trong xây dựng ứng dụng đa nền tảng.  
-- Hiểu mô hình Cloud/Serverless và cách sử dụng các dịch vụ Firebase trong phát triển ứng dụng.  
-- Nắm được cách sử dụng Firebase Authentication, Cloud Firestore, Firebase Storage và Cloud Functions để xây dựng và quản lý hệ thống.  
-- Hiểu nguyên lý hoạt động của Large Language Model (LLM) và cách tích hợp LLM API vào ứng dụng.  
-- Hiểu các khái niệm cơ bản về Prompt Engineering và xây dựng System Prompt phù hợp với bài toán tư vấn phòng trọ.  
-- Hiểu nguyên lý của phương pháp Retrieval-Augmented Generation (RAG) và cách kết hợp dữ liệu từ cơ sở dữ liệu với LLM để tạo câu trả lời phù hợp.  
+- Hiểu và vận dụng được Flutter/Dart trong xây dựng ứng dụng đa nền tảng (Web & Android).  
+- Hiểu mô hình Cloud/Serverless, Firestore Security Rules và giải pháp kết hợp Backend Proxy Node.js/TypeScript nhằm bảo mật API Key và tích hợp cổng thanh toán khi vận hành trên hạ tầng miễn phí.  
+- Hiểu nguyên lý Large Language Model (LLM), Prompt Engineering, kỹ thuật RAG 3 bước và cơ chế xác thực chữ ký HMAC-SHA256 trong thanh toán trực tuyến.  
 2. **Thực nghiệm**  
-- Xây dựng hoàn chỉnh ứng dụng cho thuê phòng trọ đa nền tảng bằng Flutter, đáp ứng các chức năng cơ bản của hệ thống.  
-- Người thuê có thể đăng ký, đăng nhập, tìm kiếm, lọc, xem chi tiết và lưu phòng trọ yêu thích.  
-- Chủ nhà có thể đăng tin, thêm hình ảnh, cập nhật, chỉnh sửa và xóa thông tin phòng trọ.  
-- Hệ thống sử dụng Firebase để quản lý tài khoản, lưu trữ dữ liệu phòng trọ, hình ảnh, thông tin yêu thích và lịch sử hội thoại.  
-- Xây dựng Chatbot AI có khả năng tiếp nhận câu hỏi bằng ngôn ngữ tự nhiên và hiểu các yêu cầu liên quan đến phòng trọ như khu vực, mức giá, diện tích và tiện ích.  
-- Chatbot có khả năng truy xuất dữ liệu phòng trọ thực tế từ Firestore, sau đó kết hợp dữ liệu với LLM API để đưa ra câu trả lời và gợi ý phòng phù hợp cho người dùng.  
-- Xây dựng được luồng RAG cơ bản, giúp Chatbot trả lời dựa trên dữ liệu thực tế của hệ thống thay vì chỉ sử dụng kiến thức có sẵn của mô hình ngôn ngữ.  
-- Xây dựng quy trình GitHub CI/CD nhằm hỗ trợ kiểm thử và tự động hóa quá trình build ứng dụng.  
-- Hoàn thiện sản phẩm ở mức có thể demo toàn bộ luồng từ đăng nhập → tìm kiếm phòng → đăng tin → sử dụng Chatbot → nhận kết quả tư vấn phòng trọ.
+- Xây dựng hoàn chỉnh ứng dụng cho thuê phòng trọ TroTot đa nền tảng (Web trên `https://phongtro-ai.web.app` & Android APK).  
+- Hỗ trợ đầy đủ luồng cho Khách vãng lai (Guest), Người thuê (tìm kiếm, lọc, yêu thích, đặt lịch, đánh giá, báo cáo), Chủ trọ (đăng tin, quản lý lịch hẹn, mua gói VIP MoMo Sandbox) và Quản trị viên (Admin Dashboard 7 phân hệ).  
+- Triển khai Chatbot AI tư vấn theo quy trình RAG qua Backend Proxy bảo mật hoàn toàn API Key, có giới hạn quota 50 request/ngày và tự động fallback offline khi mất mạng.  
+- Tự động hóa kiểm thử (`flutter analyze`, `flutter test`) và build APK/Web qua GitHub Actions CI/CD.  
+- Hoàn thiện sản phẩm ở mức có thể demo toàn bộ hệ thống từ chế độ Khách → Đăng nhập → Tìm/Lọc phòng → Đặt lịch & Đánh giá → Nâng cấp gói VIP MoMo Sandbox → Quản trị Admin → Tư vấn bằng Chatbot AI.
 
   **KẾ HOẠCH THỰC HIỆN**
 

@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:http/http.dart' as http;
 
 import '../domain/models/room.dart';
 import '../domain/models/search_intent.dart';
@@ -33,21 +33,41 @@ class RagChatService {
 
   FirebaseFirestore get _firestore => _customFirestore ?? FirebaseFirestore.instance;
 
+  static const String _envPaymentApiUrl = String.fromEnvironment('PAYMENT_API_URL');
+  static const String _customPaymentServerUrl = 'https://room-finder-app-o3aq.onrender.com';
+
+  String get _backendBaseUrl {
+    if (_envPaymentApiUrl.isNotEmpty) return _envPaymentApiUrl;
+    return _customPaymentServerUrl;
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // MODEL NORMALIZATION & AUTO-FALLBACK
   // ─────────────────────────────────────────────────────────────────────────
 
   /// Chuẩn hóa tên model Gemini:
-  /// - Model khuyến nghị chính thức hiện tại của Google: "gemini-3.8-flash".
-  /// - Tự động ánh xạ các biến thể "3.8", "3.8 flash", "flash" -> "gemini-3.8-flash".
-  /// - Nếu truyền các model cũ đã bị Google khai tử (gemini-1.5, gemini-2.0, gemini-2.5) -> tự động chuyển sang "gemini-3.8-flash".
+  /// - Mặc định sử dụng alias ổn định: "gemini-flash-latest".
+  /// - Giữ nguyên các dòng hợp lệ: "gemini-flash-latest", "gemini-flash-lite-latest",
+  ///   "gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash",
+  ///   "gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-flash-lite".
+  /// - Tự động chuyển các model cũ đã ngừng hoạt động (1.5 / 2.0) sang "gemini-flash-latest".
   static String normalizeModelName(String? rawModel) {
     if (rawModel == null || rawModel.trim().isEmpty) {
-      return 'gemini-3.8-flash';
+      return 'gemini-flash-latest';
     }
     final s = rawModel.trim().toLowerCase();
-    if (s.contains('3.8') || s == 'flash' || s == 'gemini-flash' || s.contains('latest')) {
-      if (s.contains('lite')) return 'gemini-flash-lite-latest';
+    if (s.contains('flash-lite-latest') ||
+        (s.contains('latest') && s.contains('lite')) ||
+        s.contains('3.1')) {
+      return 'gemini-flash-lite-latest';
+    }
+    if (s == 'gemini-flash-latest' ||
+        s == 'latest' ||
+        s == 'flash' ||
+        s == 'gemini-flash') {
+      return 'gemini-flash-latest';
+    }
+    if (s.contains('3.8')) {
       return 'gemini-3.8-flash';
     }
     if (s.contains('3.6')) {
@@ -57,37 +77,38 @@ class RagChatService {
       if (s.contains('lite')) return 'gemini-3.5-flash-lite';
       return 'gemini-3.5-flash';
     }
-    if (s.contains('3.1') || s.contains('lite')) {
-      return 'gemini-flash-lite-latest';
+    if (s.contains('2.5')) {
+      if (s.contains('lite')) return 'gemini-2.5-flash-lite';
+      return 'gemini-2.5-flash';
     }
     if (s.startsWith('gemini-')) {
-      // Các model cũ đã bị Google đóng quyền truy cập v1beta cho người dùng mới
-      if (s.contains('1.5') || s.contains('2.0') || s.contains('2.5')) {
-        return 'gemini-3.8-flash';
+      // Các model cũ đã ngừng hỗ trợ (1.5 / 2.0) -> tự động ánh xạ sang gemini-flash-latest
+      if (s.contains('1.5') || s.contains('2.0')) {
+        return 'gemini-flash-latest';
       }
       return s;
     }
-    return 'gemini-3.8-flash';
+    return 'gemini-flash-latest';
   }
 
   // ===========================================================================
   // BƯỚC 1: TRÍCH XUẤT Ý ĐỊNH NGƯỜI DÙNG (STRUCTURED INTENT EXTRACTION)
   // ===========================================================================
 
-  /// Gửi câu hỏi của người dùng tới Gemini để trích xuất các tiêu chí tìm phòng dưới dạng JSON.
+  /// Phân tích câu hỏi để trích xuất các tiêu chí tìm phòng dưới dạng JSON.
   /// Tối ưu tốc độ:
   /// - Phân tích cục bộ tức thì (0ms, 0 Token) xử lý chính xác 99% các mẫu câu tìm phòng tiếng Việt.
-  /// - Chỉ gọi Gemini API với model siêu tốc (Flash-Lite) khi câu hỏi mơ hồ cần AI suy luận sâu.
+  /// - Chỉ gọi Gemini Proxy phía server khi câu hỏi mơ hồ và có [idToken] hợp lệ.
   Future<UserSearchIntent> extractIntent({
     required String userMessage,
-    required String apiKey,
-    String modelName = 'gemini-3.8-flash',
+    String? idToken,
+    String modelName = 'gemini-flash-latest',
   }) async {
     // 1. Phân tích ngữ nghĩa siêu tốc cục bộ (0ms)
     final localIntent = _extractIntentFallback(userMessage);
 
     // Nếu đã phát hiện rõ tiêu chí (Quận, Giá, Tiện nghi, Loại phòng)
-    // hoặc là câu chào hỏi / hỏi thủ tục FAQ -> Trả về ngay lập tức để tiết kiệm 100% thời gian gọi API!
+    // hoặc là câu chào hỏi / hỏi thủ tục FAQ -> Trả về ngay lập tức để tiết kiệm thời gian!
     if (localIntent.district != null ||
         localIntent.maxPrice != null ||
         localIntent.amenities.isNotEmpty ||
@@ -96,90 +117,59 @@ class RagChatService {
       return localIntent;
     }
 
-    final cleanKey = apiKey.trim();
-    if (cleanKey.isEmpty) {
+    final cleanToken = (idToken ?? '').trim();
+    if (cleanToken.isEmpty) {
       return localIntent;
     }
 
-    // 2. Dự phòng: Câu hỏi quá phức tạp, gọi model siêu tốc với timeout 2.5s
-    final candidateModels = <String>[
-      'gemini-flash-lite-latest',
-      'gemini-3.5-flash-lite',
-      normalizeModelName(modelName),
-    ];
-
-    for (final candidate in candidateModels) {
-      try {
-        final result = await _callExtractIntent(
-          userMessage: userMessage,
-          apiKey: cleanKey,
-          modelName: candidate,
-        ).timeout(const Duration(milliseconds: 2500));
-        if (result != null) {
-          return result;
-        }
-      } catch (_) {
-        continue;
+    // 2. Dự phòng: Câu hỏi quá phức tạp, gọi Gemini Proxy phía server với timeout ngắn
+    try {
+      final result = await _callExtractIntentViaProxy(
+        userMessage: userMessage,
+        idToken: cleanToken,
+        modelName: normalizeModelName(modelName),
+      ).timeout(const Duration(seconds: 6));
+      if (result != null) {
+        return result;
       }
-    }
+    } catch (_) {}
 
     return localIntent;
   }
 
-  Future<UserSearchIntent?> _callExtractIntent({
+  Future<UserSearchIntent?> _callExtractIntentViaProxy({
     required String userMessage,
-    required String apiKey,
+    required String idToken,
     required String modelName,
   }) async {
-    final intentModel = GenerativeModel(
-      model: modelName,
-      apiKey: apiKey,
-      generationConfig: GenerationConfig(
-        responseMimeType: 'application/json',
-        responseSchema: Schema.object(
-          properties: {
-            'isRoomSearchQuery': Schema.boolean(
-              description:
-                  'true nếu người dùng đang tìm kiếm, hỏi thuê phòng trọ; '
-                  'false nếu chỉ chào hỏi hoặc hỏi thủ tục, quy định chung.',
-            ),
-            'maxPrice': Schema.number(
-              description:
-                  'Ngân sách tối đa tính bằng VNĐ (Ví dụ: "3 triệu", "3tr", "3000k" -> 3000000; "2.5tr" -> 2500000). Null nếu không nhắc đến giá.',
-              nullable: true,
-            ),
-            'district': Schema.string(
-              description:
-                  'Tên quận tại Hà Nội chuẩn hóa tiếng Việt (Ví dụ: "Cầu Giấy", "Đống Đa", "Thanh Xuân", "Ba Đình", "Hai Bà Trưng", "Nam Từ Liêm", "Bắc Từ Liêm", "Hoàng Mai", "Hà Đông", "Tây Hồ"). Null nếu không nhắc đến khu vực.',
-              nullable: true,
-            ),
-            'roomType': Schema.string(
-              description:
-                  'Loại hình phòng (Ví dụ: "Phòng khép kín", "Chung cư mini", "Căn hộ", "Ký túc xá"). Null nếu không nhắc.',
-              nullable: true,
-            ),
-            'amenities': Schema.array(
-              items: Schema.string(),
-              description:
-                  'Danh sách tiện nghi mong muốn (Ví dụ: "Điều hòa", "Nóng lạnh", "Ban công", "Máy giặt", "Thang máy", "Tủ lạnh").',
-            ),
-          },
-          requiredProperties: ['isRoomSearchQuery', 'amenities'],
-        ),
-        temperature: 0.1,
-      ),
-      systemInstruction: Content.system(
+    const intentSystemInstruction =
         'Bạn là bộ phân tích ý định (Intent Extractor) cho ứng dụng tìm phòng trọ TroTot tại Hà Nội. '
-        'Nhiệm vụ của bạn là bóc tách các tiêu chí người dùng yêu cầu ra JSON đúng schema. '
-        'Chỉ trả về JSON thuần túy, không có text dẫn dụ.',
-      ),
+        'Hãy phân tích câu hỏi của người dùng và trả về DUY NHẤT một JSON object hợp lệ với các trường: '
+        '{"isRoomSearchQuery": boolean, "maxPrice": number|null, "district": string|null, '
+        '"roomType": string|null, "amenities": string[]}. '
+        'Không thêm markdown hay text giải thích.';
+
+    final response = await http.post(
+      Uri.parse('$_backendBaseUrl/aiChatProxy'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $idToken',
+      },
+      body: jsonEncode({
+        'mode': 'intent',
+        'modelName': modelName,
+        'temperature': 0.1,
+        'systemInstruction': intentSystemInstruction,
+        'userMessage': 'Phân tích câu nói sau của người dùng: "$userMessage"',
+      }),
     );
 
-    final response = await intentModel.generateContent([
-      Content.text('Phân tích câu nói sau của người dùng: "$userMessage"'),
-    ]);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      return null;
+    }
 
-    final rawText = response.text?.trim() ?? '';
+    final body = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final rawText = (body['text'] as String? ?? '').trim();
     if (rawText.isEmpty) {
       return null;
     }
@@ -195,7 +185,7 @@ class RagChatService {
     }
     cleanedJson = cleanedJson.trim();
 
-    final Map<String, dynamic> decoded = jsonDecode(cleanedJson);
+    final Map<String, dynamic> decoded = jsonDecode(cleanedJson) as Map<String, dynamic>;
     return UserSearchIntent.fromJson(decoded);
   }
 
@@ -386,100 +376,108 @@ class RagChatService {
         _lastRoomsCacheTime = now;
       }
 
-      // 2. Chấm điểm tương đồng cho từng phòng dựa trên các tiêu chí trích xuất
-      final scoredRooms = <_ScoredRoom>[];
-
-      for (final room in allAvailableRooms) {
-        double score = 0.0;
-
-        // Chuẩn hóa giá của phòng về đơn vị VNĐ để so sánh
-        final roomPriceVnd = room.price < 1000 ? room.price * 1000000 : room.price;
-
-        // Tiêu chí 1: Khớp quận / khu vực (Trọng số cao nhất: 40 điểm)
-        if (intent.district != null && intent.district!.isNotEmpty) {
-          final targetDist = intent.district!.toLowerCase();
-          final roomDist = room.district.toLowerCase();
-          final roomAddr = room.address.toLowerCase();
-
-          if (roomDist.contains(targetDist) || targetDist.contains(roomDist)) {
-            score += 40.0;
-          } else if (roomAddr.contains(targetDist)) {
-            score += 30.0;
-          }
-        } else {
-          // Người dùng không nêu quận cụ thể -> chia đều cơ hội
-          score += 15.0;
-        }
-
-        // Tiêu chí 2: Khớp ngân sách tối đa (Trọng số 30 điểm)
-        if (intent.maxPrice != null && intent.maxPrice! > 0) {
-          if (roomPriceVnd <= intent.maxPrice!) {
-            score += 30.0; // Hoàn toàn dưới ngân sách
-          } else if (roomPriceVnd <= intent.maxPrice! * 1.15) {
-            score += 15.0; // Vượt nhẹ không quá 15% (đề xuất tham khảo)
-          }
-        } else {
-          score += 10.0;
-        }
-
-        // Tiêu chí 3: Khớp tiện nghi (Trọng số 20 điểm)
-        if (intent.amenities.isNotEmpty) {
-          int matchAmenityCount = 0;
-          for (final am in intent.amenities) {
-            final target = am.toLowerCase();
-            final hasMatch = room.amenities.any(
-              (a) => a.toLowerCase().contains(target) || target.contains(a.toLowerCase()),
-            );
-            if (hasMatch) matchAmenityCount++;
-          }
-          final matchRatio = matchAmenityCount / intent.amenities.length;
-          score += matchRatio * 20.0;
-        } else {
-          score += 10.0;
-        }
-
-        // Tiêu chí 4: Khớp loại hình phòng (Trọng số 10 điểm)
-        if (intent.roomType != null && intent.roomType!.isNotEmpty) {
-          final targetType = intent.roomType!.toLowerCase();
-          final rType = room.roomType.toLowerCase();
-          if (rType.contains(targetType) || targetType.contains(rType)) {
-            score += 10.0;
-          }
-        }
-
-        // Thưởng nhẹ cho phòng có đánh giá sao cao (0 - 5 điểm)
-        score += (room.averageRating / 5.0) * 5.0;
-
-        scoredRooms.add(_ScoredRoom(room: room, score: score));
-      }
-
-      // 3. Sắp xếp điểm giảm dần và chỉ lấy TOP 5 phòng cao nhất
-      scoredRooms.sort((a, b) => b.score.compareTo(a.score));
-
-      // Lọc các phòng có điểm phù hợp > 0 (nếu có tiêu chí lọc)
-      final topList = scoredRooms
-          .where((sr) => sr.score > 20.0)
-          .take(5)
-          .map((sr) => sr.room)
-          .toList();
-
-      // Nếu không có phòng nào đạt ngưỡng điểm (do người dùng tìm quá ngặt nghèo),
-      // Fallback: trả về 3 phòng gần mức giá nhất hoặc để trống để Gemini tư vấn
-      if (topList.isEmpty && allAvailableRooms.isNotEmpty) {
-        if (intent.district != null) {
-          // Thử lấy phòng cùng quận bất kể giá
-          final sameDistrict = allAvailableRooms
-              .where((r) => r.district.toLowerCase().contains(intent.district!.toLowerCase()))
-              .take(3)
-              .toList();
-          if (sameDistrict.isNotEmpty) return sameDistrict;
-        }
-      }
-
-      return topList;
+      return rankRoomsForIntent(allAvailableRooms, intent);
     } catch (_) {
       return [];
     }
+  }
+
+  /// Thuật toán chấm điểm & xếp hạng TOP 5 phòng phù hợp nhất từ danh sách ứng viên.
+  List<Room> rankRoomsForIntent(
+    List<Room> allAvailableRooms,
+    UserSearchIntent intent,
+  ) {
+    if (!intent.isRoomSearchQuery || allAvailableRooms.isEmpty) {
+      return [];
+    }
+
+    // Chấm điểm tương đồng cho từng phòng dựa trên các tiêu chí trích xuất
+    final scoredRooms = <_ScoredRoom>[];
+
+    for (final room in allAvailableRooms) {
+      double score = 0.0;
+
+      // Chuẩn hóa giá của phòng về đơn vị VNĐ để so sánh
+      final roomPriceVnd = room.price < 1000 ? room.price * 1000000 : room.price;
+
+      // Tiêu chí 1: Khớp quận / khu vực (Trọng số cao nhất: 40 điểm)
+      if (intent.district != null && intent.district!.isNotEmpty) {
+        final targetDist = intent.district!.toLowerCase();
+        final roomDist = room.district.toLowerCase();
+        final roomAddr = room.address.toLowerCase();
+
+        if (roomDist.contains(targetDist) || targetDist.contains(roomDist)) {
+          score += 40.0;
+        } else if (roomAddr.contains(targetDist)) {
+          score += 30.0;
+        }
+      } else {
+        // Người dùng không nêu quận cụ thể -> chia đều cơ hội
+        score += 15.0;
+      }
+
+      // Tiêu chí 2: Khớp ngân sách tối đa (Trọng số 30 điểm)
+      if (intent.maxPrice != null && intent.maxPrice! > 0) {
+        if (roomPriceVnd <= intent.maxPrice!) {
+          score += 30.0; // Hoàn toàn dưới ngân sách
+        } else if (roomPriceVnd <= intent.maxPrice! * 1.15) {
+          score += 15.0; // Vượt nhẹ không quá 15% (đề xuất tham khảo)
+        }
+      } else {
+        score += 10.0;
+      }
+
+      // Tiêu chí 3: Khớp tiện nghi (Trọng số 20 điểm)
+      if (intent.amenities.isNotEmpty) {
+        int matchAmenityCount = 0;
+        for (final am in intent.amenities) {
+          final target = am.toLowerCase();
+          final hasMatch = room.amenities.any(
+            (a) => a.toLowerCase().contains(target) || target.contains(a.toLowerCase()),
+          );
+          if (hasMatch) matchAmenityCount++;
+        }
+        final matchRatio = matchAmenityCount / intent.amenities.length;
+        score += matchRatio * 20.0;
+      } else {
+        score += 10.0;
+      }
+
+      // Tiêu chí 4: Khớp loại hình phòng (Trọng số 10 điểm)
+      if (intent.roomType != null && intent.roomType!.isNotEmpty) {
+        final targetType = intent.roomType!.toLowerCase();
+        final rType = room.roomType.toLowerCase();
+        if (rType.contains(targetType) || targetType.contains(rType)) {
+          score += 10.0;
+        }
+      }
+
+      // Thưởng nhẹ cho phòng có đánh giá sao cao (0 - 5 điểm)
+      score += (room.averageRating / 5.0) * 5.0;
+
+      scoredRooms.add(_ScoredRoom(room: room, score: score));
+    }
+
+    // Sắp xếp điểm giảm dần và chỉ lấy TOP 5 phòng cao nhất
+    scoredRooms.sort((a, b) => b.score.compareTo(a.score));
+
+    // Lọc các phòng có điểm phù hợp > 20
+    final topList = scoredRooms
+        .where((sr) => sr.score > 20.0)
+        .take(5)
+        .map((sr) => sr.room)
+        .toList();
+
+    // Nếu không có phòng nào đạt ngưỡng điểm, fallback cùng quận (nếu có)
+    if (topList.isEmpty && intent.district != null) {
+      final sameDistrict = allAvailableRooms
+          .where((r) => r.district.toLowerCase().contains(intent.district!.toLowerCase()))
+          .take(3)
+          .toList();
+      if (sameDistrict.isNotEmpty) return sameDistrict;
+    }
+
+    return topList;
   }
 
   // ===========================================================================
@@ -531,24 +529,24 @@ class RagChatService {
   }
 
   /// Thực hiện quy trình RAG hoàn chỉnh:
-  /// Bước 1 (Intent) -> Bước 2 (Retrieval Top 5) -> Bước 3 (Sinh câu trả lời với Gemini)
+  /// Bước 1 (Intent) -> Bước 2 (Retrieval Top 5) -> Bước 3 (Sinh câu trả lời qua Server Proxy)
   Future<RagChatResult> executeRagChat({
     required String userMessage,
-    required String apiKey,
+    String? idToken,
     required String botName,
     required String systemPrompt,
     required List<Map<String, dynamic>> faqs,
-    required List<Content> chatHistory,
-    String modelName = 'gemini-3.8-flash',
+    required List<Map<String, String>> chatHistory,
+    String modelName = 'gemini-flash-latest',
     double temperature = 0.5,
   }) async {
-    final cleanKey = apiKey.trim();
+    final cleanToken = (idToken ?? '').trim();
     final normalized = normalizeModelName(modelName);
 
     // ── BƯỚC 1: Trích xuất tiêu chí (Structured Extraction) ──────────────────
     final intent = await extractIntent(
       userMessage: userMessage,
-      apiKey: cleanKey,
+      idToken: cleanToken,
       modelName: normalized,
     );
 
@@ -592,55 +590,40 @@ QUY TẮC PHẢN HỒI QUAN TRỌNG:
     String botResponseText = '';
     final List<String> suggestedRoomIds = [];
 
-    // Gọi Gemini API sinh phản hồi với cơ chế Multi-tier Model Fallback & Fast Timeout (< 3.5s)
-    if (cleanKey.isNotEmpty) {
-      final candidateModels = <String>[
-        if (normalized.contains('lite')) normalized,
-        'gemini-flash-lite-latest',
-        'gemini-3.5-flash-lite',
-        if (!normalized.contains('lite')) normalized,
-        'gemini-flash-latest',
-        'gemini-3.8-flash',
-      ];
+    // Gọi Gemini Proxy phía Server (API Key được bảo vệ hoàn toàn trên Server)
+    if (cleanToken.isNotEmpty) {
+      try {
+        final response = await http
+            .post(
+              Uri.parse('$_backendBaseUrl/aiChatProxy'),
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $cleanToken',
+              },
+              body: jsonEncode({
+                'userMessage': userMessage,
+                'systemInstruction': fullInstruction,
+                'history': chatHistory,
+                'modelName': normalized,
+                'temperature': temperature,
+                'mode': 'chat',
+              }),
+            )
+            .timeout(const Duration(seconds: 12));
 
-      bool success = false;
-      for (final candidate in candidateModels) {
-        try {
-          final chatModel = GenerativeModel(
-            model: candidate,
-            apiKey: cleanKey,
-            generationConfig: GenerationConfig(temperature: temperature),
-            systemInstruction: Content.system(fullInstruction),
-          );
-
-          final chat = chatModel.startChat(history: chatHistory);
-          final response = await chat.sendMessage(Content.text(userMessage)).timeout(
-            const Duration(milliseconds: 3500),
-          );
-          final text = response.text?.trim() ?? '';
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          final body = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+          final text = (body['text'] as String? ?? '').trim();
           if (text.isNotEmpty) {
             botResponseText = text;
-            success = true;
-            break;
           }
-        } catch (_) {
-          // Thử candidate tiếp theo nếu gặp lỗi hoặc timeout
-          continue;
         }
+      } catch (_) {
+        // Fallback offline bên dưới nếu server không phản hồi hoặc chưa cấu hình key
       }
+    }
 
-      if (!success) {
-        // Fallback tạo câu trả lời offline thông minh khi tất cả model đều lỗi
-        botResponseText = _generateSmartOfflineResponse(
-          userMessage: userMessage,
-          botName: botName,
-          topRooms: topRooms,
-          faqs: faqs,
-          intent: intent,
-        );
-      }
-    } else {
-      // Khi chưa cấu hình API Key: Chạy bộ suy luận offline
+    if (botResponseText.isEmpty) {
       botResponseText = _generateSmartOfflineResponse(
         userMessage: userMessage,
         botName: botName,
@@ -672,6 +655,22 @@ QUY TẮC PHẢN HỒI QUAN TRỌNG:
       intent: intent,
     );
   }
+
+  /// Sinh phản hồi offline chuẩn xác (dùng cho fallback và kiểm thử chống ảo giác).
+  String buildOfflineResponse({
+    required String userMessage,
+    required String botName,
+    required List<Room> topRooms,
+    required List<Map<String, dynamic>> faqs,
+    required UserSearchIntent intent,
+  }) =>
+      _generateSmartOfflineResponse(
+        userMessage: userMessage,
+        botName: botName,
+        topRooms: topRooms,
+        faqs: faqs,
+        intent: intent,
+      );
 
   /// Bộ sinh phản hồi Offline dự phòng thông minh (Đảm bảo demo đồ án không bao giờ lỗi)
   String _generateSmartOfflineResponse({

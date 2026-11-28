@@ -103,13 +103,15 @@ class RoomFinderApp extends StatelessWidget {
         '/my-rooms': (context) => const MyRoomsScreen(),
         '/my-bookings': (context) => const MyBookingsScreen(),
         '/admin': (context) => const AdminGuard(child: AdminDashboardScreen()),
-        '/packages': (context) => const PackagesScreen(),
         '/my-packages': (context) => const MyPackagesScreen(),
       },
       onGenerateRoute: (settings) {
         if (settings.name == '/packages') {
-          final args = settings.arguments as Map<String, dynamic>?;
+          final args = settings.arguments is Map<String, dynamic>
+              ? settings.arguments as Map<String, dynamic>
+              : null;
           return MaterialPageRoute(
+            settings: settings,
             builder: (_) => PackagesScreen(
               preselectedRoomId: args?['preselectedRoomId'] as String?,
             ),

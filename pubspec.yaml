@@ -43,6 +43,7 @@ dependencies:
   google_generative_ai: ^0.4.7
   url_launcher: ^6.3.3
   http: ^1.6.0
+  web: ^1.1.1
 
 dev_dependencies:
   flutter_test:

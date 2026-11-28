@@ -56,17 +56,15 @@ service cloud.firestore {
 
       // ─── UPDATE: Phân quyền chặt chẽ theo vai trò ──────────────────────
       // Admin: được update mọi field, mọi phòng (duyệt, từ chối, ẩn, khôi phục)
-      // User đánh giá: được phép cập nhật điểm averageRating và totalReviews khi viết/xóa review
+      // Lưu ý: 'averageRating' và 'totalReviews' chỉ được cập nhật bởi Admin hoặc
+      //        Backend (Admin SDK qua /recalculateRoomRating hoặc Cloud Functions trigger).
       // User (chủ phòng): chỉ được sửa phòng của mình với các ràng buộc sau:
       //   • Không được đổi 'ownerId' (tránh chuyển nhượng lén)
       //   • Giá trị 'status' mới CHỈ ĐƯỢC LÀ 'pending_approval' hoặc 'hidden'
       //     → 'available' là quyền duy nhất của Admin (phê duyệt)
       //     → 'rejected' do Admin gán, user không được tự set
+      //   • Không được tự sửa gói VIP hay điểm đánh giá
       allow update: if isAdmin()
-                    || (
-                      isAuthenticated()
-                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['averageRating', 'totalReviews'])
-                    )
                     || (
                       isAuthenticated()
                       && resource.data.ownerId == request.auth.uid
@@ -74,8 +72,16 @@ service cloud.firestore {
                       && request.resource.data.ownerId == resource.data.ownerId
                       // Giới hạn các status user được tự gán
                       && request.resource.data.status in ['pending_approval', 'hidden']
-                      // TUYỆT ĐỐI KHÔNG CHO PHÉP user can thiệp các trường gói VIP / xúc tiến trả phí
-                      && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['priority', 'packageType', 'packageStartAt', 'packageExpiresAt', 'vipType']))
+                      // TUYỆT ĐỐI KHÔNG CHO PHÉP user can thiệp các trường gói VIP hoặc thống kê đánh giá
+                      && (!request.resource.data.diff(resource.data).affectedKeys().hasAny([
+                        'priority',
+                        'packageType',
+                        'packageStartAt',
+                        'packageExpiresAt',
+                        'vipType',
+                        'averageRating',
+                        'totalReviews'
+                      ]))
                     );
 
       // Xóa phòng: Admin hoặc chính chủ phòng
@@ -144,14 +150,55 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead'])
       );
 
-      // Cho phép tạo thông báo hệ thống / đặt lịch / phê duyệt
-      allow create: if isAuthenticated();
+      // Admin được tạo mọi thông báo (kể cả broadcast 'all').
+      // User thường chỉ được tạo thông báo nghiệp vụ ('booking' hoặc 'review') gửi đúng
+      // đối tác dựa trên document booking/review có thật, tuyệt đối cấm broadcast hay giả danh.
+      allow create: if isAdmin() || (
+        isAuthenticated()
+        && request.resource.data.recipientId is string
+        && request.resource.data.recipientId != 'all'
+        && request.resource.data.recipientId != 'admin'
+        && request.resource.data.recipientId != request.auth.uid
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.isRead == false
+        && (
+          (
+            request.resource.data.type == 'booking'
+            && request.resource.data.bookingId is string
+            && exists(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId))
+            && (
+              (
+                get(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.userId == request.auth.uid
+                && get(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.ownerId == request.resource.data.recipientId
+              )
+              || (
+                get(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.ownerId == request.auth.uid
+                && get(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.userId == request.resource.data.recipientId
+              )
+            )
+          )
+          || (
+            request.resource.data.type == 'review'
+            && request.resource.data.reviewId is string
+            && exists(/databases/$(database)/documents/reviews/$(request.resource.data.reviewId))
+            && get(/databases/$(database)/documents/reviews/$(request.resource.data.reviewId)).data.userId == request.auth.uid
+            && get(/databases/$(database)/documents/reviews/$(request.resource.data.reviewId)).data.ownerId == request.resource.data.recipientId
+          )
+        )
+      );
       allow delete: if isAdmin();
     }
 
-    // 7. System Settings & AI Knowledge
+    // 7. System Settings & AI Knowledge (Không chứa apiKey bí mật)
     match /system_settings/{settingId} {
       allow read: if isAuthenticated();
+      allow write: if isAdmin()
+                   && !('apiKey' in request.resource.data);
+    }
+
+    // 7b. System Secrets (Chỉ Admin ghi / Server Admin SDK đọc, client tuyệt đối không đọc)
+    match /system_secrets/{secretId} {
+      allow read: if false;
       allow write: if isAdmin();
     }
 
@@ -191,12 +238,18 @@ service cloud.firestore {
 
     // 9. Chat histories & messages (AI Chatbot)
     match /chat_histories/{sessionId} {
-      allow read, write: if isAuthenticated() && (
-        resource == null || resource.data.userId == request.auth.uid || isAdmin()
-      );
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated()
+                    && (resource.data.userId == request.auth.uid || isAdmin())
+                    && request.resource.data.userId == resource.data.userId;
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
 
       match /messages/{messageId} {
-        allow read, write: if isAuthenticated();
+        allow read, write: if isAuthenticated() && (
+          get(/databases/$(database)/documents/chat_histories/$(sessionId)).data.userId == request.auth.uid
+          || isAdmin()
+        );
       }
     }
 

@@ -5,26 +5,33 @@ import 'package:room_finder_app/domain/models/room.dart';
 
 void main() {
   group('AI Service Model Normalization Tests', () {
-    test('Normalizes 3.8 flash variations to gemini-3.8-flash', () {
+    test('Normalizes flash aliases and version variations consistently', () {
+      expect(AiService.normalizeModelName('gemini-flash-latest'), 'gemini-flash-latest');
+      expect(AiService.normalizeModelName('latest'), 'gemini-flash-latest');
+      expect(AiService.normalizeModelName('flash'), 'gemini-flash-latest');
+      expect(AiService.normalizeModelName('gemini-flash-lite-latest'), 'gemini-flash-lite-latest');
+      expect(AiService.normalizeModelName('latest lite'), 'gemini-flash-lite-latest');
+      expect(AiService.normalizeModelName('3.1'), 'gemini-flash-lite-latest');
       expect(AiService.normalizeModelName('3.8 flash'), 'gemini-3.8-flash');
       expect(AiService.normalizeModelName('gemini-3.8-flash'), 'gemini-3.8-flash');
       expect(AiService.normalizeModelName('3.8'), 'gemini-3.8-flash');
-      expect(AiService.normalizeModelName('latest'), 'gemini-3.8-flash');
-      expect(AiService.normalizeModelName('flash'), 'gemini-3.8-flash');
       expect(RagChatService.normalizeModelName('3.8 flash'), 'gemini-3.8-flash');
     });
 
-    test('Normalizes 3.6, 3.5, and maps deprecated 1.5/2.0 to 3.8', () {
+    test('Preserves valid 2.5/3.5/3.6 models and maps deprecated 1.5/2.0 to gemini-flash-latest', () {
       expect(AiService.normalizeModelName('gemini-3.6-flash'), 'gemini-3.6-flash');
       expect(AiService.normalizeModelName('gemini-3.5-flash'), 'gemini-3.5-flash');
-      expect(AiService.normalizeModelName('gemini-1.5-flash'), 'gemini-3.8-flash');
-      expect(AiService.normalizeModelName('gemini-2.0-flash'), 'gemini-3.8-flash');
+      expect(AiService.normalizeModelName('gemini-3.5-flash-lite'), 'gemini-3.5-flash-lite');
+      expect(AiService.normalizeModelName('gemini-2.5-flash'), 'gemini-2.5-flash');
+      expect(AiService.normalizeModelName('gemini-2.5-flash-lite'), 'gemini-2.5-flash-lite');
+      expect(AiService.normalizeModelName('gemini-1.5-flash'), 'gemini-flash-latest');
+      expect(AiService.normalizeModelName('gemini-2.0-flash'), 'gemini-flash-latest');
     });
 
-    test('Handles null and empty string with default', () {
-      expect(AiService.normalizeModelName(null), 'gemini-3.8-flash');
-      expect(AiService.normalizeModelName('   '), 'gemini-3.8-flash');
-      expect(AiService.normalizeModelName('unknown-xyz'), 'gemini-3.8-flash');
+    test('Handles null and empty string with default gemini-flash-latest', () {
+      expect(AiService.normalizeModelName(null), 'gemini-flash-latest');
+      expect(AiService.normalizeModelName('   '), 'gemini-flash-latest');
+      expect(AiService.normalizeModelName('unknown-xyz'), 'gemini-flash-latest');
     });
   });
 
@@ -34,7 +41,6 @@ void main() {
     test('extractIntent fallback correctly detects district and maxPrice', () async {
       final intent = await ragService.extractIntent(
         userMessage: 'Tìm phòng trọ ở Cầu Giấy tầm 3 triệu có điều hòa',
-        apiKey: '', // Offline mode
       );
 
       expect(intent.isRoomSearchQuery, isTrue);
@@ -46,7 +52,6 @@ void main() {
     test('extractIntent fast maps university landmarks and fractional price', () async {
       final intentThuyLoi = await ragService.extractIntent(
         userMessage: 'Có phòng gần ĐH Thủy Lợi tầm 3tr5 có ban công không',
-        apiKey: '',
       );
       expect(intentThuyLoi.isRoomSearchQuery, isTrue);
       expect(intentThuyLoi.district, 'Đống Đa');
@@ -55,7 +60,6 @@ void main() {
 
       final greetingIntent = await ragService.extractIntent(
         userMessage: 'Xin chào bạn là ai',
-        apiKey: '',
       );
       expect(greetingIntent.isRoomSearchQuery, isFalse);
     });

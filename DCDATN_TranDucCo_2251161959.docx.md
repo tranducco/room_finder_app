@@ -59,7 +59,7 @@ Toàn bộ phần xác thực, lưu trữ dữ liệu và kiểm soát truy cậ
 - Triển khai Web trực tiếp trên Firebase Hosting (`https://phongtro-ai.web.app`) và Payment/AI Proxy Server trên Render.  
 6. **Kiểm thử và hoàn thiện**
 
-   **\-**	Thực hiện kiểm thử unit/widget test (44 test cases trong `test/`) cho domain models, hệ thống gói VIP, RAG/intent normalization & đánh giá chống ảo giác, luồng người dùng E2E, banner carousel và bản đồ `RoomGoogleMapCard`.
+   **\-**	Thực hiện kiểm thử unit/widget/HTTP integration test (48 test cases trong `test/`) cho domain models, hệ thống gói VIP, HTTP Proxy & MoMo endpoints, RAG/intent normalization & đánh giá chống ảo giác, luồng người dùng E2E, banner carousel và bản đồ `RoomGoogleMapCard`.
 
    \- 	Kiểm thử phân quyền Firestore Rules, luồng thanh toán MoMo Sandbox, kết nối Gemini API thực tế qua Proxy và khả năng chống "ảo giác" bằng danh sách phòng thực từ CSDL.
 

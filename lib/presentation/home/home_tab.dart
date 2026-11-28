@@ -12,6 +12,7 @@ import '../widgets/app_logo.dart';
 import 'widgets/ai_chat_sheet.dart';
 import 'widgets/home_app_footer.dart';
 import 'widgets/home_banner_carousel.dart';
+import 'widgets/home_header_widgets.dart';
 import 'widgets/home_pagination_bar.dart';
 import 'widgets/notification_sheet.dart';
 import 'widgets/room_filter_sheet.dart';
@@ -394,15 +395,18 @@ class HomeTabState extends State<HomeTab> {
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      _notificationBell(),
+                                      HomeNotificationBellButton(
+                                        notificationCount: _notificationCount,
+                                        onTap: _openNotificationsSheet,
+                                      ),
                                       const SizedBox(width: 6),
-                                      _headerIconBtn(
+                                      HomeHeaderIconButton(
                                         icon: Icons.cloud_upload_outlined,
                                         tooltip: 'Đẩy dữ liệu mẫu',
                                         onTap: seedData,
                                       ),
                                       const SizedBox(width: 6),
-                                      _headerIconBtn(
+                                      HomeHeaderIconButton(
                                         icon: Icons.refresh_rounded,
                                         tooltip: 'Làm mới',
                                         onTap: loadData,
@@ -414,7 +418,7 @@ class HomeTabState extends State<HomeTab> {
                               const SizedBox(height: 10),
 
                               // Location badge (Mobile)
-                              _statChip(Icons.location_on_rounded, 'Hà Nội'),
+                              HomeStatChip(Icons.location_on_rounded, 'Hà Nội'),
 
                               const SizedBox(height: 10),
 
@@ -646,7 +650,7 @@ class HomeTabState extends State<HomeTab> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     if (_priceRange.start > 1 || _priceRange.end < 15)
-                      _activeTag(
+                      HomeActiveFilterTag(
                         'Giá: ${_priceRange.start.toStringAsFixed(1)} - ${_priceRange.end >= 15 ? '15+ tr' : '${_priceRange.end.toStringAsFixed(1)} tr'}',
                         () {
                           setState(
@@ -656,7 +660,7 @@ class HomeTabState extends State<HomeTab> {
                         },
                       ),
                     if (_areaRange.start > 15 || _areaRange.end < 80)
-                      _activeTag(
+                      HomeActiveFilterTag(
                         'DT: ${_areaRange.start.toStringAsFixed(0)} - ${_areaRange.end >= 80 ? '80+ m²' : '${_areaRange.end.toStringAsFixed(0)} m²'}',
                         () {
                           setState(() => _areaRange = const RangeValues(15, 80));
@@ -664,12 +668,12 @@ class HomeTabState extends State<HomeTab> {
                         },
                       ),
                     if (_selectedRoomTypeFilter != 'Tất cả')
-                      _activeTag(_selectedRoomTypeFilter, () {
+                      HomeActiveFilterTag(_selectedRoomTypeFilter, () {
                         setState(() => _selectedRoomTypeFilter = 'Tất cả');
                         _applyFilters();
                       }),
                     ..._requiredAmenities.map(
-                      (amenity) => _activeTag(amenity, () {
+                      (amenity) => HomeActiveFilterTag(amenity, () {
                         setState(() => _requiredAmenities.remove(amenity));
                         _applyFilters();
                       }),
@@ -900,159 +904,22 @@ class HomeTabState extends State<HomeTab> {
     );
   }
 
-  Widget _notificationBell() {
-    return Tooltip(
-      message: 'Thông báo',
-      child: HoverWidget(
-        onTap: () {
-          setState(() => _notificationCount = 0);
-          showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            backgroundColor: Colors.transparent,
-            builder: (ctx) => NotificationSheet(
-              onNavigateToBookings: () {
-                Navigator.pop(ctx);
-                Navigator.pushNamed(context, '/my-bookings');
-              },
-              onNavigateToLogin: () {
-                Navigator.pop(ctx);
-                Navigator.pushNamed(context, '/login');
-              },
-            ),
-          );
+  void _openNotificationsSheet() {
+    setState(() => _notificationCount = 0);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => NotificationSheet(
+        onNavigateToBookings: () {
+          Navigator.pop(ctx);
+          Navigator.pushNamed(context, '/my-bookings');
         },
-        builder: (context, isHovered) {
-          final isDesk = MediaQuery.of(context).size.width >= 1024;
-          final btnSize = isDesk ? 40.0 : 36.0;
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            width: btnSize,
-            height: btnSize,
-            transform: Matrix4.translationValues(0, isHovered ? -2 : 0, 0),
-            decoration: BoxDecoration(
-              color: isHovered
-                  ? Colors.white.withAlpha(55)
-                  : Colors.white.withAlpha(25),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: isHovered ? Colors.white : Colors.white.withAlpha(70),
-                width: isHovered ? 1.5 : 1.0,
-              ),
-              boxShadow: isHovered
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withAlpha(25),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
-                      ),
-                    ]
-                  : [],
-            ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Icon(Icons.notifications_outlined, color: Colors.white, size: isDesk ? 20 : 18),
-                if (_notificationCount > 0)
-                  Positioned(
-                    top: 4,
-                    right: 4,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: const BoxDecoration(
-                        color: Colors.redAccent,
-                        shape: BoxShape.circle,
-                      ),
-                      constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
-                      child: Text(
-                        '$_notificationCount',
-                        style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          );
+        onNavigateToLogin: () {
+          Navigator.pop(ctx);
+          Navigator.pushNamed(context, '/login');
         },
       ),
-    );
-  }
-
-  Widget _headerIconBtn({
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback onTap,
-  }) {
-    return Tooltip(
-      message: tooltip,
-      child: HoverWidget(
-        onTap: onTap,
-        builder: (context, isHovered) {
-          final isDesk = MediaQuery.of(context).size.width >= 1024;
-          final btnSize = isDesk ? 40.0 : 36.0;
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            width: btnSize,
-            height: btnSize,
-            transform: Matrix4.translationValues(0, isHovered ? -2 : 0, 0),
-            decoration: BoxDecoration(
-              color: isHovered
-                  ? Colors.white.withAlpha(55)
-                  : Colors.white.withAlpha(25),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: isHovered ? Colors.white : Colors.white.withAlpha(70),
-                width: isHovered ? 1.5 : 1.0,
-              ),
-              boxShadow: isHovered
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withAlpha(25),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
-                      ),
-                    ]
-                  : [],
-            ),
-            child: Icon(icon, color: Colors.white, size: isDesk ? 20 : 18),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _statChip(IconData icon, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withAlpha(25),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withAlpha(60)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: Colors.white, size: 14),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white, fontSize: 13),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _activeTag(String label, VoidCallback onRemove) {
-    return Chip(
-      label: Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF00897B))),
-      deleteIcon: const Icon(Icons.close, size: 14, color: Color(0xFF00897B)),
-      onDeleted: onRemove,
-      backgroundColor: const Color(0xFF00897B).withAlpha(20),
-      side: BorderSide(color: const Color(0xFF00897B).withAlpha(60)),
-      padding: EdgeInsets.zero,
-      visualDensity: VisualDensity.compact,
     );
   }
 

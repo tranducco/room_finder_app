@@ -303,12 +303,11 @@ class _AiChatSheetState extends State<AiChatSheet> {
                     ),
                   ],
                 ),
-                Text(
-                  _showSessionHistory
-                      ? 'Lịch sử các phiên hội thoại'
-                      : 'Tư vấn tìm trọ, giá cả & thủ tục hợp đồng',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                ),
+                if (_showSessionHistory)
+                  Text(
+                    'Lịch sử các phiên hội thoại',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
               ],
             ),
           ),
@@ -402,13 +401,53 @@ class _AiChatSheetState extends State<AiChatSheet> {
     );
   }
 
-  Widget _buildWelcomeAndPrompts() {
-    final quickPrompts = [
+  String _normalizePromptText(String raw) {
+    return raw
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\p{L}\p{N}\s]', unicode: true), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  List<String> _buildSuggestedPrompts() {
+    final prompts = <String>[
       '🔍 Tìm phòng Cầu Giấy dưới 3.5 triệu',
       '❄️ Tìm phòng có điều hòa, khép kín',
-      '📝 Lưu ý cọc phòng và ký hợp đồng thuê',
-      '📅 Làm sao để đặt lịch xem phòng trên app?',
     ];
+    final seen = prompts.map(_normalizePromptText).toSet();
+
+    final faqCandidates = _faqs
+        .map((f) => (f['question'] as String? ?? '').trim())
+        .where((q) => q.isNotEmpty);
+
+    var addedFromFaq = 0;
+    for (final q in faqCandidates) {
+      if (addedFromFaq >= 2) break;
+      final norm = _normalizePromptText(q);
+      if (norm.isNotEmpty && seen.add(norm)) {
+        prompts.add(q);
+        addedFromFaq++;
+      }
+    }
+
+    if (addedFromFaq == 0) {
+      for (final fallback in const [
+        '📝 Lưu ý cọc phòng và ký hợp đồng thuê',
+        '📅 Làm sao để đặt lịch xem phòng trên app?',
+      ]) {
+        if (prompts.length >= 4) break;
+        final norm = _normalizePromptText(fallback);
+        if (seen.add(norm)) {
+          prompts.add(fallback);
+        }
+      }
+    }
+
+    return prompts.take(4).toList();
+  }
+
+  Widget _buildWelcomeAndPrompts() {
+    final suggestedPrompts = _buildSuggestedPrompts();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -416,79 +455,46 @@ class _AiChatSheetState extends State<AiChatSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.all(16),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: const Color(0xFF00897B).withAlpha(15),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(14),
               border: Border.all(color: const Color(0xFF00897B).withAlpha(40)),
             ),
-            child: Row(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFF00897B).withAlpha(40), width: 1.5),
-                    boxShadow: const [
-                      BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2)),
-                    ],
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: ClipOval(
-                    child: Image.asset(
-                      'assets/images/ai_bot.png',
-                      width: 48,
-                      height: 48,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => const Icon(
-                        Icons.smart_toy_rounded,
-                        color: Color(0xFF00897B),
-                        size: 26,
-                      ),
-                    ),
+                const Text(
+                  'Xin chào! Tôi có thể giúp gì cho bạn? 👋',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF004D40),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Xin chào! Tôi là $_botName 👋',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF004D40),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Tôi có thể giúp bạn tìm phòng trọ ưng ý theo quận huyện, mức giá, tiện ích hoặc giải đáp các thắc mắc về hợp đồng, cọc trọ.',
-                        style: TextStyle(fontSize: 13, color: Colors.grey.shade800),
-                      ),
-                    ],
-                  ),
+                const SizedBox(height: 4),
+                Text(
+                  'Tìm phòng theo quận, mức giá, tiện ích hoặc hỏi về cọc và hợp đồng.',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade800),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 18),
           const Text(
-            'Gợi ý câu hỏi phổ biến:',
+            'Gợi ý nhanh:',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.bold,
               color: Color(0xFF1A1A2E),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: quickPrompts.map((prompt) {
+            children: suggestedPrompts.map((prompt) {
               return ActionChip(
                 backgroundColor: Colors.white,
                 side: BorderSide(color: Colors.grey.shade300),
@@ -501,49 +507,6 @@ class _AiChatSheetState extends State<AiChatSheet> {
               );
             }).toList(),
           ),
-          if (_faqs.isNotEmpty) ...[
-            const SizedBox(height: 24),
-            const Text(
-              'Câu hỏi thường gặp từ Quản trị viên:',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1A1A2E),
-              ),
-            ),
-            const SizedBox(height: 12),
-            ..._faqs.take(3).map((f) {
-              final q = f['question'] as String? ?? '';
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: InkWell(
-                  onTap: () => _sendMessage(q),
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.grey.shade200),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.help_outline, size: 16, color: Color(0xFF00897B)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            q,
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                          ),
-                        ),
-                        const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Colors.grey),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }),
-          ],
         ],
       ),
     );
@@ -754,7 +717,9 @@ class _AiChatSheetState extends State<AiChatSheet> {
                         children: [
                           Expanded(
                             child: Text(
-                              '${room.price} triệu/tháng',
+                              room.price >= 100000
+                                  ? '${(room.price / 1000000).toStringAsFixed(1).replaceAll('.0', '')} triệu/tháng'
+                                  : '${room.price} triệu/tháng',
                               style: const TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,

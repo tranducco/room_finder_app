@@ -113,10 +113,13 @@ jobs:
           retention-days: 14
 
   build_web:
-    name: Build Flutter Web Release
+    name: Build & Deploy Flutter Web (Firebase Hosting)
     needs: [ flutter_analyze_and_test, functions_build, payment_server_build ]
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -140,3 +143,11 @@ jobs:
           name: trotot-web-build
           path: build/web
           retention-days: 14
+
+      - name: Deploy to Firebase Hosting (Live)
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PHONGTRO_AI }}
+          channelId: live
+          projectId: phongtro-ai

@@ -36,7 +36,7 @@ class _AiChatSheetState extends State<AiChatSheet> {
   final ScrollController _scrollController = ScrollController();
 
   String? _currentSessionId;
-  String _botName = 'Trợ lý ảo TroTot AI';
+  static const String _botName = 'Trợ lý Trọ Tốt';
   List<Map<String, dynamic>> _faqs = [];
 
   bool _isSending = false;
@@ -61,7 +61,6 @@ class _AiChatSheetState extends State<AiChatSheet> {
       final config = await _adminService.getAiKnowledge();
       if (mounted) {
         setState(() {
-          _botName = config['botName'] as String? ?? 'Trợ lý ảo TroTot AI';
           _faqs = List<Map<String, dynamic>>.from(
             (config['faqs'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map)),
           );
@@ -265,43 +264,15 @@ class _AiChatSheetState extends State<AiChatSheet> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        _botName,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1A1A2E),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF00897B).withAlpha(25),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.bolt, size: 12, color: Color(0xFF00897B)),
-                          Text(
-                            'Gemini AI',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF00897B),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                const Text(
+                  _botName,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1A1A2E),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 if (_showSessionHistory)
                   Text(

@@ -353,7 +353,7 @@ Việc triển khai Cloud Functions yêu cầu cấu hình Firebase CLI, quyền
 
 ## 🧪 11. Kiểm thử và CI/CD
 
-Dự án xây dựng bộ kiểm thử tự động gồm **41 test cases** (đạt 100%, 0 fail, 0 skip):
+Dự án xây dựng bộ kiểm thử tự động gồm **44 test cases** (đạt 100%, 0 fail, 0 skip):
 
 | Bộ kiểm thử | Số lượng |
 |---|---:|
@@ -362,9 +362,10 @@ Dự án xây dựng bộ kiểm thử tự động gồm **41 test cases** (đ�
 | `ai_service_test.dart` | 6 |
 | `e2e_user_journey_test.dart` | 6 |
 | `chatbot_evaluation_test.dart` | 6 |
+| `room_google_map_card_test.dart` | 3 |
 | `home_banner_carousel_test.dart` | 2 |
 | `widget_test.dart` | 1 |
-| **Tổng cộng** | **41** |
+| **Tổng cộng** | **44** |
 
 Chạy kiểm thử:
 
@@ -395,7 +396,7 @@ Dự án sử dụng GitHub Actions với workflow:
 
 Các bước tự động hóa chính:
 
-1. Kiểm tra mã nguồn Flutter (`flutter analyze`) và chạy **41/41** test cases (`flutter test`).
+1. Kiểm tra mã nguồn Flutter (`flutter analyze`) và chạy **44/44** test cases (`flutter test`).
 2. Build TypeScript cho cả `functions/` và `payment-server/`.
 3. Build Android APK Release và Flutter Web Release.
 4. Lưu trữ APK và bản build Web dưới dạng GitHub Actions Artifacts.
@@ -443,7 +444,7 @@ Các hạng mục đã được ghi nhận hoàn thành trong checklist:
 - [x] Tích hợp Gemini API qua Backend Proxy và Chatbot RAG.
 - [x] Xây dựng hệ thống gói VIP & Chế độ Khách (Guest Mode + `AuthGuard`).
 - [x] Tích hợp MoMo Sandbox (Render + Cloud Functions).
-- [x] Xây dựng **41 test cases** (Unit, Widget, E2E luồng chính & Đánh giá chống ảo giác Chatbot).
+- [x] Xây dựng **44 test cases** (Unit, Widget, E2E luồng chính & Đánh giá chống ảo giác Chatbot).
 - [x] Cấu hình GitHub Actions CI/CD (`flutter analyze`, `flutter test`, `functions`, `payment-server`, Web & APK).
 - [x] Triển khai phiên bản thử nghiệm Web (Firebase Hosting) & Payment/AI Proxy Server (Render).
 - [ ] Hoàn thiện khảo sát UAT sau nghiệm thu.
